@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-label="Vigilon XDR Platform">
+  <title>Vigilon XDR Platform</title>
+  <style>
+    /* Port of dashboard/static/splash.js: trace, fill, ring steps, blink. Plays once, then idles. */
+    @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes fadeOut { from { opacity: 1 } to { opacity: 0 } }
+    @keyframes gridDim { 0% { opacity: 0 } 30% { opacity: 1 } 70% { opacity: 1 } 100% { opacity: .35 } }
+    @keyframes draw    { from { stroke-dashoffset: 1.05 } to { stroke-dashoffset: 0 } }
+    @keyframes rise    { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+    @keyframes spin    { to { transform: rotate(360deg) } }
+    @keyframes okay    { to { stroke: #3FD08E } }
+    @keyframes blink   { 0%, 6%, 100% { transform: scaleY(1) } 3% { transform: scaleY(.08) } }
+
+    .grid   { opacity: 0; animation: gridDim 1.8s ease forwards; }
+    .trace path, .trace circle {
+      fill: none; stroke: #A99BFF; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round;
+      stroke-dasharray: 1 1.1; stroke-dashoffset: 1.05;
+      animation: draw var(--d) var(--t) cubic-bezier(.5,0,.3,1) forwards;
+    }
+    .trace  { animation: fadeOut .45s 1.35s ease forwards; }
+    .anchors > * { opacity: 0; animation: fadeIn .2s var(--t) ease forwards; }
+    .anchors { animation: fadeOut .3s 1.15s ease forwards; }
+    .anchors rect { fill: #0D0B18; stroke: #A99BFF; stroke-width: 3; }
+    .anchors line { stroke: #A99BFF; stroke-width: 2; opacity: .7; }
+    .anchors circle { fill: #A99BFF; }
+    .fill   { opacity: 0; animation: fadeIn .45s 1.15s ease forwards; }
+    .glow   { opacity: 0; animation: fadeIn .7s 1.15s ease forwards; }
+    .eye    { transform-box: fill-box; transform-origin: center; animation: blink 6s 4.3s ease-in-out infinite; }
+
+    .ticks  { fill: none; stroke: rgba(169,155,255,.35); stroke-width: 3; stroke-dasharray: 1 5;
+              transform-box: fill-box; transform-origin: center; animation: spin 60s linear infinite; }
+    .inner  { fill: none; stroke: rgba(169,155,255,.18); stroke-width: 1; }
+    .track  { fill: none; stroke: rgba(169,155,255,.12); stroke-width: 6; }
+    .seg    { fill: none; stroke: #A99BFF; stroke-width: 6; stroke-dasharray: 1 1.1; stroke-dashoffset: 1.05;
+              animation: draw .38s var(--t) cubic-bezier(.4,0,.2,1) forwards, okay .6s 4.1s ease forwards; }
+
+    .words  { opacity: 0; animation: rise .5s 1.3s cubic-bezier(.4,0,.2,1) forwards; }
+    .wordmark { font: 600 68px "Sora", "Segoe UI", Helvetica, Arial, sans-serif; fill: #ECE9F8; letter-spacing: .01em; }
+    .tag    { font: 500 15px "Share Tech Mono", Consolas, "Courier New", monospace; fill: #A99BFF; letter-spacing: .42em; }
+    .sub    { font: 400 19px "Segoe UI", Helvetica, Arial, sans-serif; fill: #9C96BD; }
+    .status { font: 15px "Share Tech Mono", Consolas, "Courier New", monospace; fill: #9C96BD; }
+    .st     { opacity: 0; animation: fadeIn .15s var(--on) ease forwards, fadeOut .15s var(--off) ease forwards; }
+    .st.last { animation: fadeIn .15s var(--on) ease forwards; }
+    .ready  { fill: #3FD08E; }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
+    }
+  </style>
+
+  <defs>
+    <radialGradient id="bg" cx="28%" cy="50%" r="80%">
+      <stop offset="0" stop-color="#1B1636"/><stop offset=".7" stop-color="#0B0916"/>
+    </radialGradient>
+    <radialGradient id="glowg">
+      <stop offset="0" stop-color="#7B6AE6" stop-opacity=".45"/><stop offset=".65" stop-color="#7B6AE6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="dotg">
+      <stop offset="0" stop-color="#fff"/><stop offset=".35" stop-color="#A99BFF"/><stop offset="1" stop-color="#A99BFF" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="gridp" width="24" height="24" patternUnits="userSpaceOnUse" x="8" y="12">
+      <path d="M24 0H0V24" fill="none" stroke="rgba(169,155,255,0.14)" stroke-width="1"/>
+    </pattern>
+    <radialGradient id="gridfade" cx="360" cy="180" r="330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="gridmask"><rect width="1280" height="360" fill="url(#gridfade)"/></mask>
+    <clipPath id="frame"><rect width="1280" height="360" rx="18"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="1280" height="360" fill="url(#bg)"/>
+    <rect class="grid" width="1280" height="360" fill="url(#gridp)" mask="url(#gridmask)"/>
+
+    <!-- Emblem: centred at (360,180), 280px like the splash -->
+    <circle class="glow" cx="360" cy="180" r="120" fill="url(#glowg)"/>
+
+    <g transform="translate(220,40) scale(1.4)">
+      <circle class="ticks" cx="100" cy="100" r="97"/>
+      <circle class="inner" cx="100" cy="100" r="78"/>
+      <path class="track" d="M109.20,12.48 A88,88 0 0 1 187.52,90.80"/>
+      <path class="track" d="M187.52,109.20 A88,88 0 0 1 109.20,187.52"/>
+      <path class="track" d="M90.80,187.52 A88,88 0 0 1 12.48,109.20"/>
+      <path class="track" d="M12.48,90.80 A88,88 0 0 1 90.80,12.48"/>
+      <path class="seg" style="--t:1.8s"  pathLength="1" d="M109.20,12.48 A88,88 0 0 1 187.52,90.80"/>
+      <path class="seg" style="--t:2.35s" pathLength="1" d="M187.52,109.20 A88,88 0 0 1 109.20,187.52"/>
+      <path class="seg" style="--t:2.9s"  pathLength="1" d="M90.80,187.52 A88,88 0 0 1 12.48,109.20"/>
+      <path class="seg" style="--t:3.45s" pathLength="1" d="M12.48,90.80 A88,88 0 0 1 90.80,12.48"/>
+    </g>
+
+    <!-- Owl, in the coordinates of images/vigilon-owl.svg (viewBox 150 90 480 590) -->
+    <g transform="translate(259.9,81.2) scale(0.2567)">
+      <g class="fill">
+        <path d="M248,102 L389,180 L529,102 L611,322 C616,338 612,350 604,364 C560,440 470,550 389,663 C308,550 218,440 174,364 C166,350 162,338 167,322 Z" fill="#3E3289"/>
+        <path d="M248,102 L389,180 L529,102 L611,322 L613,340 L165,340 L167,322 Z" fill="#4B3F94"/>
+        <path d="M230,341 C300,368 370,430 382,532 Q389,548 396,532 C408,430 478,368 548,341 Z" fill="#4B3F94"/>
+        <path d="M230,342 C300,368 370,430 382,532 C330,500 262,430 230,342 Z" fill="#574BA1"/>
+        <path d="M548,342 C478,368 408,430 396,532 C448,500 516,430 548,342 Z" fill="#574BA1"/>
+        <path d="M389,505 C384,560 378,610 383,655" fill="none" stroke="#31276D" stroke-width="3" stroke-linecap="round"/>
+        <path d="M248,102 L389,180 L529,102 L611,322 C616,338 612,350 604,364 C560,440 470,550 389,663 C308,550 218,440 174,364 C166,350 162,338 167,322 Z" fill="none" stroke="#31276D" stroke-width="4" stroke-linejoin="round"/>
+        <circle class="eye" cx="301" cy="283" r="49" fill="#fff" stroke="#31276D" stroke-width="4"/>
+        <circle class="eye" cx="477" cy="283" r="49" fill="#fff" stroke="#31276D" stroke-width="4"/>
+        <path d="M360,356 L418,356 L389,406 Z" fill="#fff" stroke="#31276D" stroke-width="4" stroke-linejoin="round"/>
+      </g>
+      <g class="trace">
+        <path style="--d:1s;--t:0s"     pathLength="1" d="M248,102 L389,180 L529,102 L611,322 C616,338 612,350 604,364 C560,440 470,550 389,663 C308,550 218,440 174,364 C166,350 162,338 167,322 Z"/>
+        <path style="--d:.6s;--t:.38s"  pathLength="1" d="M230,342 C300,368 370,430 382,532 C330,500 262,430 230,342 Z"/>
+        <path style="--d:.6s;--t:.38s"  pathLength="1" d="M548,342 C478,368 408,430 396,532 C448,500 516,430 548,342 Z"/>
+        <path style="--d:.4s;--t:.6s"   pathLength="1" d="M389,505 C384,560 378,610 383,655"/>
+        <circle style="--d:.5s;--t:.3s" pathLength="1" cx="301" cy="283" r="49"/>
+        <circle style="--d:.5s;--t:.3s" pathLength="1" cx="477" cy="283" r="49"/>
+        <path style="--d:.35s;--t:.65s" pathLength="1" d="M360,356 L418,356 L389,406 Z"/>
+      </g>
+      <g class="anchors">
+        <g style="--t:.08s"><line x1="604" y1="364" x2="560" y2="440"/><circle cx="560" cy="440" r="6"/></g>
+        <g style="--t:.15s"><line x1="389" y1="663" x2="470" y2="550"/><circle cx="470" cy="550" r="6"/></g>
+        <g style="--t:.22s"><line x1="389" y1="663" x2="308" y2="550"/><circle cx="308" cy="550" r="6"/></g>
+        <g style="--t:.29s"><line x1="174" y1="364" x2="218" y2="440"/><circle cx="218" cy="440" r="6"/></g>
+        <rect style="--t:.36s" x="240" y="94"  width="16" height="16"/>
+        <rect style="--t:.43s" x="381" y="172" width="16" height="16"/>
+        <rect style="--t:.50s" x="521" y="94"  width="16" height="16"/>
+        <rect style="--t:.57s" x="603" y="314" width="16" height="16"/>
+        <rect style="--t:.64s" x="596" y="356" width="16" height="16"/>
+        <rect style="--t:.71s" x="381" y="655" width="16" height="16"/>
+        <rect style="--t:.78s" x="166" y="356" width="16" height="16"/>
+        <rect style="--t:.85s" x="159" y="314" width="16" height="16"/>
+      </g>
+      <!-- Glowing dot that runs along the outline while it is traced -->
+      <circle r="26" fill="url(#dotg)" opacity="0">
+        <animateMotion dur="1s" fill="freeze" calcMode="spline" keyTimes="0;1" keyPoints="0;1" keySplines=".2 .6 .4 1"
+          path="M248,102 L389,180 L529,102 L611,322 C616,338 612,350 604,364 C560,440 470,550 389,663 C308,550 218,440 174,364 C166,350 162,338 167,322 Z"/>
+        <animate attributeName="opacity" dur="1s" fill="freeze" values="1;1;0" keyTimes="0;.9;1"/>
+      </circle>
+    </g>
+
+    <!-- Wordmark + loading status -->
+    <g class="words">
+      <text class="wordmark" x="560" y="158">Vigilon</text>
+      <text class="tag" x="563" y="192">XDR PLATFORM</text>
+      <text class="sub" x="562" y="236">Multi-agent platform for unified log and endpoint threat defense</text>
+    </g>
+    <g class="status">
+      <text class="st" style="--on:.2s;--off:2.35s" x="562" y="284">Verifying session…</text>
+      <text class="st" style="--on:.2s;--off:2.35s" x="1106" y="284" text-anchor="end">1/4</text>
+      <text class="st" style="--on:2.4s;--off:2.9s" x="562" y="284">Connecting to agents…</text>
+      <text class="st" style="--on:2.4s;--off:2.9s" x="1106" y="284" text-anchor="end">2/4</text>
+      <text class="st" style="--on:2.95s;--off:3.45s" x="562" y="284">Loading threat data…</text>
+      <text class="st" style="--on:2.95s;--off:3.45s" x="1106" y="284" text-anchor="end">3/4</text>
+      <text class="st" style="--on:3.5s;--off:4.0s" x="562" y="284">Preparing dashboard…</text>
+      <text class="st" style="--on:3.5s;--off:4.0s" x="1106" y="284" text-anchor="end">4/4</text>
+      <text class="st last ready" style="--on:4.05s" x="562" y="284">Ready</text>
+    </g>
+  </g>
+</svg>
