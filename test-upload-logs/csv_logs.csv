@@ -1,0 +1,21 @@
+timestamp,level,service,host,message,client_ip,endpoint,source
+2026-01-26T23:40:01Z,INFO,apache2,web-server-01,HTTP server started,,/,system
+2026-01-26T23:40:02Z,INFO,nginx,proxy-server-01,Load balancer configured,,/,system  
+2026-01-26T23:40:03Z,ERROR,apache2,web-server-01,Authentication failed,192.168.1.100,/admin/login,security
+2026-01-26T23:40:04Z,WARN,mysql,db-server-01,High CPU usage detected,,,performance
+2026-01-26T23:40:05Z,INFO,api_gateway,api-server-01,API endpoint registered,,/api/v1/users,api
+2026-01-26T23:40:06Z,ERROR,api_gateway,api-server-01,SQL injection blocked,203.0.113.50,/api/v1/search,security
+2026-01-26T23:40:07Z,INFO,redis,cache-server-01,Cache server online,,,database
+2026-01-26T23:40:08Z,CRITICAL,firewall,firewall-01,DDoS attack detected,198.51.100.0/24,,security
+2026-01-26T23:40:09Z,WARN,mongodb,db-server-03,Memory usage high,,,performance
+2026-01-26T23:40:10Z,ERROR,elasticsearch,search-server-01,Index corruption detected,,,database
+2026-01-26T23:40:11Z,INFO,kubernetes,k8s-master-01,Pod deployment successful,,,orchestration
+2026-01-26T23:40:12Z,WARN,docker,container-host-01,Container restart detected,,,orchestration
+2026-01-26T23:40:13Z,ERROR,tomcat,app-server-01,Application deployment failed,,/CustomerPortal,application
+2026-01-26T23:40:14Z,INFO,rabbitmq,message-broker-01,Message queue created,,,messaging
+2026-01-26T23:40:15Z,CRITICAL,intrusion_detection,security-server-01,Malware detected in upload,198.51.100.20,/upload,security
+2026-01-26T23:40:16Z,WARN,load_balancer,lb-server-01,Backend server unhealthy,,,infrastructure
+2026-01-26T23:40:17Z,INFO,grafana,monitoring-server-01,Dashboard accessed,,/dashboard,monitoring
+2026-01-26T23:40:18Z,ERROR,jenkins,ci-server-01,Build pipeline failed,,,deployment
+2026-01-26T23:40:19Z,WARN,prometheus,monitoring-server-02,Metric scrape timeout,,,monitoring
+2026-01-26T23:40:20Z,INFO,vault,secrets-server-01,Secret rotation completed,,,security

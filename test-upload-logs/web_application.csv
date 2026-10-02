@@ -1,0 +1,21 @@
+timestamp,level,service,host,message,client_ip,endpoint,response_code,response_size,source
+2026-01-26T23:25:01Z,INFO,apache2,web-server-01,"GET /api/users HTTP/1.1",192.168.1.50,/api/users,200,1234,access
+2026-01-26T23:25:02Z,INFO,apache2,web-server-01,"POST /login HTTP/1.1",10.0.0.25,/login,302,567,access
+2026-01-26T23:25:03Z,ERROR,apache2,web-server-01,script '/var/www/html/admin.php' not found,,/admin.php,404,0,error
+2026-01-26T23:25:04Z,INFO,nginx,proxy-server-01,"GET /dashboard HTTP/1.1",203.0.113.30,/dashboard,200,8956,access
+2026-01-26T23:25:05Z,WARN,nginx,proxy-server-01,upstream server temporarily unavailable,,,502,0,error
+2026-01-26T23:25:06Z,INFO,tomcat,app-server-01,REST API application deployed successfully,,,200,0,deployment
+2026-01-26T23:25:07Z,ERROR,tomcat,app-server-01,javax.servlet.ServletException: SQL syntax error,,,500,0,error
+2026-01-26T23:25:08Z,INFO,iis,web-server-02,GET /Default.aspx,192.168.1.100,/Default.aspx,200,0,access
+2026-01-26T23:25:09Z,ERROR,iis,web-server-02,Application '/CustomerPortal' has been disabled,,/CustomerPortal,503,0,error
+2026-01-26T23:25:10Z,INFO,httpd,web-server-03,"PUT /api/v1/data HTTP/1.1",172.16.0.10,/api/v1/data,201,89,access
+2026-01-26T23:25:11Z,ERROR,httpd,web-server-03,File does not exist: /var/www/html/backup.sql,,/backup.sql,404,0,error
+2026-01-26T23:25:12Z,INFO,load_balancer,lb-server-01,Health check for backend server1 successful,,,200,0,health_check
+2026-01-26T23:25:13Z,WARN,load_balancer,lb-server-01,Backend server2 marked as down,,,503,0,health_check
+2026-01-26T23:25:14Z,INFO,web_firewall,security-server-01,Rule violation detected - SQL injection attempt,198.51.100.30,,403,0,security
+2026-01-26T23:25:15Z,ERROR,web_firewall,security-server-01,Critical rule violation - blocking request,198.51.100.30,,403,0,security
+2026-01-26T23:25:16Z,INFO,cdn,cdn-server-01,Cache hit ratio: 95% for /static/images/,,/static/images/,200,0,performance
+2026-01-26T23:25:17Z,WARN,cdn,cdn-server-01,DDoS protection activated for origin server,,,503,0,security
+2026-01-26T23:25:18Z,INFO,proxy,proxy-server-02,TCP_MISS/200 for external API call,,,200,0,proxy
+2026-01-26T23:25:19Z,ERROR,proxy,proxy-server-02,Access denied for restricted domain,,,403,0,security
+2026-01-26T23:25:20Z,INFO,api_rate_limit,api-server-01,Rate limit exceeded for client 198.51.100.50,198.51.100.50,,429,0,security

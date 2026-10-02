@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Vigilon - Dashboard</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/vigilon-owl.svg') }}" type="image/svg+xml">
+    <link rel="alternate icon" href="{{ url_for('static', filename='images/vigilon-icon-192.png') }}" type="image/png">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/vigilon-icon-192.png') }}">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet" type="text/css"/>
+    <link href="{{ url_for('static', filename='splash.css') }}" rel="stylesheet" type="text/css"/>
+    <script src="{{ url_for('static', filename='js/dashboard-splash-flag.js') }}"></script>
+    <script src="{{ url_for('static', filename='splash.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/auth-guard.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/auth-fetch.js') }}"></script>
+    <style>
+      :root {
+        --vg-bg-primary: #14102B;
+        --vg-bg-panel: #1E1840;
+        --vg-bg-input: #241C5E;
+        --vg-primary: #6C5CE0;
+        --vg-accent: #B9B2F7;
+        --vg-brand-deep: #4B3F94;
+        --vg-text-primary: #F1EFFE;
+        --vg-text-secondary: #A79EF5;
+        --vg-text-muted: #6E668F;
+        --vg-status-critical: #ff0000;
+        --vg-status-high: #ff6600;
+        --vg-status-medium: #ffcc00;
+        --vg-status-low: #00ff00;
+        --vg-status-online: #00cc00;
+        --vg-status-offline: #ff0000;
+        --dragonfruit: var(--vg-accent);
+        --night-violet: var(--vg-bg-panel);
+      }
+
+      /* Recolor inline theme styles used across dashboard sections/modals */
+      *[style*="#00ff00"],
+      *[style*="#00aa00"] {
+        color: var(--dragonfruit) !important;
+        border-color: var(--dragonfruit) !important;
+      }
+
+      *[style*="background:#0f1729"],
+      *[style*="background: #0f1729"],
+      *[style*="background:#0a0f14"],
+      *[style*="background: #0a0f14"],
+      *[style*="background:#0b1117"],
+      *[style*="background: #0b1117"],
+      *[style*="background:#0d1117"],
+      *[style*="background: #0d1117"],
+      *[style*="background:#1a1a1a"],
+      *[style*="background: #1a1a1a"],
+      *[style*="background:#111"],
+      *[style*="background: #111"] {
+        background: var(--night-violet) !important;
+      }
+
+      /* Keep requested exceptions unchanged */
+      .btn-start,
+      .btn-start:hover:not(:disabled) {
+        color: #00ff00 !important;
+        border-color: #00ff00 !important;
+      }
+
+      .btn-stop,
+      .btn-stop:hover:not(:disabled) {
+        color: #ff4444 !important;
+        border-color: #ff4444 !important;
+      }
+
+      .btn-logs,
+      .btn-logs:hover:not(:disabled) {
+        color: #4488ff !important;
+        border-color: #4488ff !important;
+      }
+
+      /* Ensure inline card/modal borders that were green also switch to dragonfruit */
+      *[style*="border:1px solid #00ff00"],
+      *[style*="border-bottom:1px solid #00ff00"],
+      *[style*="border-top:1px solid #00ff00"],
+      *[style*="border:2px solid #00ff00"],
+      *[style*="border-bottom:2px solid #00ff00"] {
+        border-color: var(--dragonfruit) !important;
+      }
+
+      /* Remap remaining legacy border-line tokens to active theme accent */
+      *[style*="#1f3b23"],
+      *[style*="rgba(0, 255, 0"],
+      *[style*="rgba(0,255,0"] {
+        border-color: var(--dragonfruit) !important;
+      }
+
+      .analyst-edit-cell {
+        border: none !important;
+        background: var(--night-violet) !important;
+        padding-left: 10px;
+        white-space: nowrap;
+      }
+
+      .analyst-edit-btn {
+        background: var(--night-violet) !important;
+        border: 1px solid var(--dragonfruit) !important;
+        color: var(--dragonfruit) !important;
+        padding: 4px 14px;
+        border-radius: 3px;
+        cursor: pointer;
+        font-family: monospace;
+        font-size: 12px;
+      }
+
+      .analyst-edit-btn:hover {
+        background: rgba(217, 184, 255, 0.12) !important;
+        box-shadow: 0 0 14px rgba(217, 184, 255, 0.35) !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header-container">
+      <!-- TODO: replace shield icon with Vigilon owl logo when the asset is provided. -->
+      <h1><img src="{{ url_for('static', filename='images/vigilon-owl.svg') }}" alt="Vigilon" class="header-brand-img"> Vigilon <span class="header-brand-subtitle">Multi-Agent XDR Platform</span></h1>
+      <div class="header-right">
+        <span class="user-greeting" id="user-greeting"></span>
+        <button class="logout-btn" onclick="logout()">⏻ Logout</button>
+        <div class="hamburger-menu">
+        <button class="hamburger-btn" onclick="toggleMenu()">☰</button>
+        <div class="dropdown-menu" id="dropdownMenu">
+          <div class="dropdown-item" onclick="showPage('dashboard-main')">Dashboard</div>
+          <div class="dropdown-item" onclick="showPage('agents')">Agent Management</div>
+          <div class="dropdown-item" onclick="showPage('database')">Database</div>
+          <div class="dropdown-item" onclick="showPage('logs-section')">Logs</div>
+          <div class="dropdown-item" id="menu-analyst-team" onclick="showPage('analyst-team-section')">Analyst Team</div>
+        </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Dashboard Page -->
+    <div id="dashboard-main" class="page-section active">
+      <h2>📊 Threat Monitoring Dashboard</h2>
+      
+      <div class="dashboard-grid">
+        <div class="dashboard-card">
+          <h3>📈 Import Information</h3>
+          <div id="import-info">
+            <p><strong>Last Log Ingestion:</strong> <span id="last-import">Loading...</span></p>
+            <p><strong>Total Log Events:</strong> <span id="total-logs">Loading...</span></p>
+            <p><strong>Assets Discovered:</strong> <span id="assets-count">Loading...</span></p>
+            <p><strong>Vulnerabilities Found:</strong> <span id="vulns-count">Loading...</span></p>
+          </div>
+        </div>
+
+        <div class="dashboard-card">
+          <h3>⚠️ Recent Threat Activity</h3>
+          
+          <!-- Threats list -->
+          <div id="threat-list"></div>
+          
+          <!-- Pagination controls (minimalist) -->
+          <div class="pagination-controls">
+            <span id="threats-page-info" class="pagination-info">1/0 (0 total)</span>
+            <div class="pagination-buttons">
+              <button id="btn-threats-prev" class="btn-pagination-prev">←</button>
+              <button id="btn-threats-next" class="btn-pagination-next">→</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="dashboard-card">
+          <h3>🚨 Detected Anomalies</h3>
+          <div id="anomalies-list">Loading...</div>
+        </div>
+
+        <div class="dashboard-card">
+          <h3>🎯 Attack Patterns Detected</h3>
+          <div id="patterns-list">Loading...</div>
+        </div>
+
+        <div class="dashboard-card" style="grid-column: 1 / -1;">
+          <h3>⛓️ Ranked Attack Paths</h3>
+          <div id="attack-paths-container">
+            <p class="text-muted">Loading...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Threats Review Section -->
+      <section id="needs-review-section" style="margin-top:18px;" class="collapsed">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+          <div style="display:flex; align-items:center; gap:10px; cursor:pointer;" onclick="toggleReviewQueue()">
+            <span class="collapse-toggle" style="font-size:16px; transition:transform 0.2s; display:inline-block;">▼</span>
+            <h2 style="margin:0;">🔍 Threats Requiring Review</h2>
+          </div>
+          <button class="btn" onclick="openAnalyticsModal()">📊 View Analytics</button>
+        </div>
+        <div id="needs-review-container"><p>Loading review queue...</p></div>
+      </section>
+    </div>
+
+    <div id="review-modal", style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.82);
+    z-index:1000; align-items:center; justify-content:center;">
+      <div style="background:#0d1117; border:1px solid #00ff00; width:min(900px, 96vw); max-height:90vh; display:flex;
+      flex-direction:column; overflow:hidden;">
+        <div style="padding:10px 14px; border-bottom:1px solid #00ff00; display:flex; justify-content:space-between; align-items:center;">
+          <span>🧪 Review Threat</span>
+          <button onclick="closeReviewModal()" style="background:none; border:none; color:#00ff00; font-size:20px; cursor:pointer; padding:0; margin:0;">✕</button>
+        </div>
+        <div id="review-modal-body" style="padding:14px; overflow-y:auto;"></div>
+        <div style="padding:10px 14px; border-top:1px solid #00ff00; display:flex; gap:8px; justify-content:flex-end;">
+        </div>
+      </div>
+    </div>
+
+    <div id="analytics-modal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7);
+    display:none; justify-content:center; align-items:center; z-index:1000;">
+      <div style="background:#111; border:1px solid #00ff00; border-radius:4px; padding:20px; max-width:900px; width:90%; max-height:80vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+          <h3>📊 Team Analytics</h3>
+          <button onclick="closeAnalyticsModal()" style="background:none; border:none; color:#00ff00; font-size:20px; cursor:pointer;">✕</button>
+        </div>
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr style="border-bottom:2px solid #00ff00;">
+              <th style="padding:8px; text-align:left;">Analyst</th>
+              <th style="padding:8px; text-align:center;">Reviews</th>
+              <th style="padding:8px; text-align:center;">✓ Confirmed</th>
+              <th style="padding:8px; text-align:center;">🔴 False Pos.</th>
+              <th style="padding:8px; text-align:center;">⚠️ Escalated</th>
+              <th style="padding:8px; text-align:center;">⏱️ Avg Time</th>
+              <th style="padding:8px; text-align:center;">📈 SLA %</th>
+            </tr>
+          </thead>
+          <tbody id="analytics-body">
+            <tr>
+              <td colspan="7" style="text-align:center; padding:20px;">
+                Loading...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/review.js') }}"></script>
+
+
+    <!-- Agent Management Page -->
+    <div id="agents" class="page-section">
+      <h2>🤖 Agent Management</h2>
+      
+      <div class="agent-management-container" id="agent-status-container">
+        <!-- Agent cards are dynamically rendered by JavaScript -->
+      </div>
+
+    <!-- EDR Agent Management -->
+      <hr class="edr-divider">
+      <h2 class="edr-title">🔐 EDR Sensor Management</h2>
+
+      <!-- Status Messages -->
+      <div id="edr-message-container" class="edr-message-container"></div>
+
+       <!-- EDR Agent Cards (2-column grid)-->
+       <div class="edr-agents-grid">
+
+        <!-- Windows Agents Card -->
+         <div class="edr-agent-card">
+          <div style="position:relative; padding-right:92px; margin-bottom:12px; min-height:24px;">
+            <h3 style="margin:0; white-space:nowrap; line-height:1.2;">💻 Windows Sensors</h3>
+            <button class="btn btn-edr-actions" onclick="openEDRActionsModal('windows')" style="position:absolute; right:0; top:0; flex:0 0 auto; padding:4px 10px; font-size:11px; line-height:1; white-space:nowrap;">⚡ Actions</button>
+          </div>
+
+          <div class="edr-stats-grid">
+            <div class="edr-stat">
+              <label>Online</label>
+              <div class="stat-value" id="win-online">-</div>
+            </div>
+            <div class="edr-stat">
+              <label>Offline</label>
+              <div class="stat-value" id="win-offline">-</div>
+            </div>
+            <div class="edr-stat">
+              <label>High Conf</label>
+              <div class="stat-value" id="win-high-conf">-</div>
+            </div>
+            <div class="edr-stat">
+              <label>Review Queue</label>
+              <div class="stat-value" id="win-review">-</div>
+            </div>
+          </div>
+
+          <ul id="windows-list" class="edr-agent-list">
+            <li>Loading...</li>
+          </ul>
+
+          <button class="btn edr-refresh-btn" onclick="refreshEDRAgents()">⟲ Refresh</button>
+       </div>
+
+       <!-- Linux Agents Card -->
+        <div class="edr-agent-card">
+          <div style="position:relative; padding-right:92px; margin-bottom:12px; min-height:24px;">
+            <h3 style="margin:0; white-space:nowrap; line-height:1.2;">🐧 Linux Sensors</h3>
+            <button class="btn btn-edr-actions" onclick="openEDRActionsModal('linux')" style="position:absolute; right:0; top:0; flex:0 0 auto; padding:4px 10px; font-size:11px; line-height:1; white-space:nowrap;">⚡ Actions</button>
+          </div>
+          
+          <div class="edr-stats-grid">
+            <div class="edr-stat">
+              <label>Online</label>
+              <div class="stat-value" id="linux-online">-</div>
+            </div>
+            <div class="edr-stat">
+              <label>Offline</label>
+              <div class="stat-value" id="linux-offline">-</div>
+            </div>
+            <div class="edr-stat">
+              <label>High Conf</label>
+              <div class="stat-value" id="linux-high-conf">-</div>
+            </div>
+            <div class="edr-stat">
+              <label>Review Queue</label>
+              <div class="stat-value" id="linux-review">-</div>
+            </div>
+          </div>
+
+          <ul id="linux-list" class="edr-agent-list">
+            <li>Loading...</li>
+          </ul>
+
+          <button class="btn edr-refresh-btn" onclick="refreshEDRAgents()">⟲ Refresh</button>
+        </div>
+
+      <!-- Last 24h Summary -->
+      <div class="edr-summary">
+        <span>📊 Last 24h: <strong id="summary-events">-</strong> events | <strong id="summary-high-conf">-</strong> high-confidence detections</span>
+      </div>
+
+      <!-- Detection Queue Table -->
+      <div class="edr-detection-queue">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
+          <h3 style="margin:0;">🚨 Detection Queue</h3>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span id="detection-page-info" class="pagination-info">1/1</span>
+            <button id="btn-detection-prev" class="btn-pagination-prev" onclick="changeDetectionPage(-1)">←</button>
+            <button id="btn-detection-next" class="btn-pagination-next" onclick="changeDetectionPage(1)">→</button>
+          </div>
+        </div>
+        <table class="edr-table">
+          <thead>
+            <tr>
+              <th>Hostname</th>
+              <th>OS Version</th>
+              <th>Event Type</th>
+              <th>Time</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="detection-tbody">
+            <tr class="loading-row"><td colspan="5">Loading detections...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="edr-actions-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.82); z-index:1100; align-items:center; justify-content:center;">
+      <div style="background:#0d1117; border:1px solid #00ff00; border-radius:8px; width:min(1280px, 96vw); height:min(88vh, 920px); display:flex; flex-direction:column; overflow:hidden; font-family:'Share Tech Mono','Courier New',monospace; color:#00ff00;">
+        <div style="padding:12px 16px; border-bottom:1px solid #00ff00; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <div>
+            <div style="font-size:14px;">⚡ EDR Actions</div>
+            <div id="edr-actions-subtitle" style="font-size:11px; color:#8cb6ff; margin-top:4px;">Select an online agent to view telemetry and dispatch actions.</div>
+          </div>
+          <button onclick="closeEDRActionsModal()" style="background:none; border:none; color:#00ff00; font-size:22px; cursor:pointer; padding:0; margin:0;">✕</button>
+        </div>
+        <div style="display:grid; grid-template-columns:minmax(260px, 320px) minmax(300px, 360px) 1fr; min-height:0; flex:1;">
+          <div style="border-right:1px solid #1f3b23; overflow-y:auto; padding:14px; background:#0a0f14;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:10px;">
+              <strong style="font-size:12px; color:#8cb6ff;">Online Agents</strong>
+              <span id="edr-actions-agent-count" style="font-size:11px; color:#64748b;">0 online</span>
+            </div>
+            <div id="edr-actions-agent-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+          </div>
+          <div style="border-right:1px solid #1f3b23; overflow-y:auto; padding:14px; background:#0b1117; min-height:0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:10px;">
+              <strong style="font-size:12px; color:#8cb6ff;">Recent Telemetry</strong>
+              <span id="edr-actions-telemetry-count" style="font-size:11px; color:#64748b;">0 events</span>
+            </div>
+            <div id="edr-actions-telemetry-categories" role="tablist" aria-label="Telemetry categories" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">
+              <button type="button" role="tab" aria-selected="true" data-telemetry-category="All" onclick="setTelemetryCategory('All')" style="background:rgba(217,184,255,0.14); border:1px solid #D9B8FF; color:#D9B8FF; padding:5px 8px; border-radius:4px; cursor:pointer; font:inherit; font-size:10px;">All</button>
+              <button type="button" role="tab" aria-selected="false" data-telemetry-category="Telemetry" onclick="setTelemetryCategory('Telemetry')" style="background:#0D0D0D; border:1px solid rgba(217,184,255,0.45); color:#8cb6ff; padding:5px 8px; border-radius:4px; cursor:pointer; font:inherit; font-size:10px;">Telemetry</button>
+              <button type="button" role="tab" aria-selected="false" data-telemetry-category="Suspicious" onclick="setTelemetryCategory('Suspicious')" style="background:#0D0D0D; border:1px solid rgba(217,184,255,0.45); color:#8cb6ff; padding:5px 8px; border-radius:4px; cursor:pointer; font:inherit; font-size:10px;">Suspicious</button>
+              <button type="button" role="tab" aria-selected="false" data-telemetry-category="Threat" onclick="setTelemetryCategory('Threat')" style="background:#0D0D0D; border:1px solid rgba(217,184,255,0.45); color:#8cb6ff; padding:5px 8px; border-radius:4px; cursor:pointer; font:inherit; font-size:10px;">Threat</button>
+              <button type="button" role="tab" aria-selected="false" data-telemetry-category="Informational" onclick="setTelemetryCategory('Informational')" style="background:#0D0D0D; border:1px solid rgba(217,184,255,0.45); color:#8cb6ff; padding:5px 8px; border-radius:4px; cursor:pointer; font:inherit; font-size:10px;">Informational</button>
+            </div>
+            <div id="edr-actions-telemetry-list" style="display:flex; flex-direction:column; gap:8px;">
+              <div style="padding:16px; border:1px dashed #1f3b23; border-radius:6px; color:#64748b;">
+                Select an online agent to inspect its telemetry stream.
+              </div>
+            </div>
+          </div>
+          <div style="overflow-y:auto; padding:14px; min-height:0;">
+            <div id="edr-actions-content" style="display:flex; flex-direction:column; gap:14px;">
+              <div style="padding:16px; border:1px dashed #1f3b23; border-radius:6px; color:#64748b;">
+                Select a telemetry event to view details and response options.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+
+
+
+      <script src="{{ url_for('static', filename='js/agents-edr.js') }}"></script>
+    </div>
+
+    <!-- Database Page -->
+    <div id="database" class="page-section database-section">
+      <h2>📊 Database Overview</h2>
+
+      <h3>Assets</h3>
+      <table id="assets-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Risk Level</th>
+          </tr>
+        </thead>
+        <tbody id="assets-body"></tbody>
+      </table>
+
+      <h3>Vulnerabilities</h3>
+      <table id="vulnerabilities-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Severity</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody id="vulnerabilities-body"></tbody>
+      </table>
+
+      <h3>Asset-Vulnerability Mappings</h3>
+      <table id="asset-vulns-table">
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Type</th>
+            <th>Risk Level</th>
+            <th>Vulnerability</th>
+            <th>Severity</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody id="asset-vulns-body"></tbody>
+      </table>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard-data.js') }}"></script>
+
+    <!-- Logs Section -->
+    <section id="logs-section" class="page-section">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2>📄 Recent Ingested Logs</h2>
+        <div>
+          <input
+            type="file"
+            id="log-file-input"
+            accept=".json,.csv,.log,.txt"
+            style="display:none;"
+            onchange="handleLogUpload(this)"
+          />
+          <button
+            class="btn"
+            onclick="document.getElementById('log-file-input').click()"
+          >
+            📁 Upload Log File
+          </button>
+        </div>
+      </div>
+      <div
+        id="upload-status"
+        style="display:none; margin:10px 0; padding:10px; border-radius:3px; font-size:12px;"
+      ></div>
+      <div id="logs-container">
+        <p>Loading logs...</p>
+      </div>
+    </section>
+
+    <!-- Analyst Team Section -->
+    <section id="analyst-team-section" class="page-section">
+      <h2>👥 Analyst Team Management</h2>
+      <div id="analysts-container">
+        <p>Loading analysts...</p>
+      </div>
+    </section>
+
+    <!-- Agent Log Terminal Modal -->
+    <div id="agent-logs-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.82); z-index:1000; align-items:center; justify-content:center;">
+      <div style="background:#000; border:1.5px solid #00ff00; border-radius:6px; width:min(1200px,96vw); max-height:90vh; display:flex; flex-direction:column; font-family:'Share Tech Mono','Courier New',monospace; overflow:hidden;">
+
+        <!-- Title bar -->
+        <div style="display:flex; align-items:center; background:#d9b8ff; border-bottom:1px solid #00ff00; padding:8px 14px; gap:8px;">
+          <span style="width:11px;height:11px;border-radius:50%;background:#ff5f57;display:inline-block;"></span>
+          <span style="width:11px;height:11px;border-radius:50%;background:#febc2e;display:inline-block;"></span>
+          <span style="width:11px;height:11px;border-radius:50%;background:#28c840;display:inline-block;"></span>
+          <span id="logs-modal-title" style="flex:1; text-align:center; color:#00ff00; font-size:12px;"></span>
+          <span id="logs-live-indicator" style="color:#00ff00; font-size:10px; animation: pulse 1.5s infinite;">● LIVE</span>
+          <button onclick="closeLogsModal()" style="background:transparent; border:none; color:#00ff00; font-size:18px; cursor:pointer; line-height:1; padding:0 4px;">&times;</button>
+        </div>
+
+        <!-- Log body -->
+        <div id="logs-modal-body" style="flex:1; overflow-y:auto; padding:14px 18px; font-size:13.5px; line-height:1.75; color:#00ff00; white-space:pre-wrap; word-break:break-all; min-height:400px;">
+          <span style="color:#555;">Loading&hellip;</span>
+        </div>
+
+        <!-- Footer -->
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#d9b8ff; border-top:1px solid #00ff00; padding:5px 14px;">
+          <span id="logs-modal-linecount" style="color:#00aa00; font-size:10px;"></span>
+          <button onclick="document.getElementById('logs-modal-body').scrollTop=9999999" style="background:transparent; border:none; color:#00aa00; font-size:10px; cursor:pointer; font-family:'Share Tech Mono','Courier New',monospace;">&darr; scroll to end</button>
+        </div>
+
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/log-upload.js') }}"></script>
+
+    <!-- Edit Analyst Modal -->
+    <div id="edit-analyst-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center;">
+      <div style="background:#0d1117; border:1px solid #00ff00; border-radius:6px; padding:28px 32px; min-width:340px; font-family:'Share Tech Mono','Courier New',monospace; color:#00ff00;">
+        <h3 style="margin:0 0 6px 0;">✏️ Edit Analyst</h3>
+        <p id="modal-analyst-name" style="margin:0 0 20px 0; color:#64748b; font-size:13px;"></p>
+
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
+          <label style="font-size:12px; color:#8cb6ff;">Name</label>
+          <input id="modal-analyst-input-name" type="text"
+            style="background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px;" />
+
+          <label style="font-size:12px; color:#8cb6ff;">Email</label>
+          <input id="modal-analyst-input-email" type="email"
+            style="background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px;" />
+
+          <label style="font-size:12px; color:#8cb6ff;">Role</label>
+          <select id="modal-analyst-input-role"
+            style="background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px;">
+            <option value="analyst">analyst</option>
+            <option value="senior_analyst">senior analyst</option>
+            <option value="manager">manager</option>
+            <option value="admin">admin</option>
+          </select>
+
+          <label style="font-size:12px; color:#8cb6ff;">Notification Threshold</label>
+          <select id="modal-analyst-input-threshold"
+            style="background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px;">
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+            <option value="critical">critical</option>
+          </select>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <button onclick="modalSaveDetails()"
+            style="background:#00331a; border:1px solid #00ff00; color:#00ff00; padding:9px 16px; border-radius:3px; cursor:pointer; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px; text-align:left;">
+            💾 Save changes
+          </button>
+          <button id="modal-toggle-active-btn" onclick="modalToggleActive()"
+            style="background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:9px 16px; border-radius:3px; cursor:pointer; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px; text-align:left;">
+          </button>
+          <button onclick="modalResetPassword()"
+            style="background:#1a0a0a; border:1px solid #ff4444; color:#ff4444; padding:9px 16px; border-radius:3px; cursor:pointer; font-family:monospace; font-size:13px; text-align:left;">
+            🔑 Reset password to default
+          </button>
+          <button onclick="closeEditModal()"
+            style="background:transparent; border:1px solid #2a3550; color:#64748b; padding:9px 16px; border-radius:3px; cursor:pointer; font-family:monospace; font-size:13px;">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/logs-analysts.js') }}"></script>
+
+  </body>
+</html>

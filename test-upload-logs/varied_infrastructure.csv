@@ -1,0 +1,41 @@
+timestamp,level,service,host,message,client_ip,endpoint,response_code,source
+2026-03-01T08:00:01Z,INFO,sshd,bastion-01,Accepted publickey for deploy from 10.0.1.5 port 54321,10.0.1.5,,200,auth
+2026-03-01T08:00:15Z,INFO,nginx,api-gateway-01,GET /health HTTP/1.1 200,10.0.0.1,/health,200,access
+2026-03-01T08:00:22Z,INFO,postgresql,db-primary-01,Connection received on socket,,,200,database
+2026-03-01T08:01:03Z,WARN,openssl,tls-terminator-01,TLS 1.0 handshake from legacy client 172.16.4.20 - deprecated protocol,172.16.4.20,,200,network
+2026-03-01T08:01:45Z,INFO,nginx,api-gateway-01,POST /api/v2/auth HTTP/1.1 200,10.0.2.10,/api/v2/auth,200,access
+2026-03-01T08:02:10Z,INFO,rsyslog,log-aggregator-01,Log rotation completed successfully,,,200,system
+2026-03-01T08:02:33Z,WARN,sshd,bastion-01,Failed password for invalid user oracle from 203.0.113.44 port 32891,203.0.113.44,,401,auth
+2026-03-01T08:02:34Z,WARN,sshd,bastion-01,Failed password for invalid user oracle from 203.0.113.44 port 32892,203.0.113.44,,401,auth
+2026-03-01T08:02:35Z,WARN,sshd,bastion-01,Failed password for invalid user oracle from 203.0.113.44 port 32893,203.0.113.44,,401,auth
+2026-03-01T08:03:00Z,INFO,haproxy,lb-01,Server backend/app-02 is UP,,,200,network
+2026-03-01T08:03:20Z,INFO,openssl,tls-terminator-01,Certificate renewed successfully for api.internal,,,200,network
+2026-03-01T08:04:05Z,WARN,postfix,mail-relay-01,TLS library problem: error:140760FC:SSL routines - connection reset by peer,,,500,network
+2026-03-01T08:04:40Z,INFO,nginx,api-gateway-01,GET /api/v2/metrics HTTP/1.1 200,10.0.3.1,/api/v2/metrics,200,access
+2026-03-01T08:05:11Z,INFO,ntp,ntp-server-01,Synchronised to time server 162.159.200.123,,,200,system
+2026-03-01T08:05:55Z,WARN,openssl,tls-terminator-01,Certificate for smtp.internal expires in 14 days,,,200,network
+2026-03-01T08:06:30Z,INFO,haproxy,lb-01,New connection from 10.0.0.50,10.0.0.50,,200,network
+2026-03-01T08:07:00Z,ERROR,postgresql,db-primary-01,FATAL: password authentication failed for user "app_user",10.0.2.5,,401,database
+2026-03-01T08:07:33Z,INFO,nginx,api-gateway-01,PUT /api/v2/config HTTP/1.1 201,10.0.1.1,/api/v2/config,201,access
+2026-03-01T08:08:15Z,WARN,snmpd,network-monitor-01,SNMP community string mismatch from 172.16.5.100,172.16.5.100,,403,network
+2026-03-01T08:09:00Z,INFO,sshd,bastion-01,Accepted publickey for sysadmin from 10.0.1.10 port 44212,10.0.1.10,,200,auth
+2026-03-01T08:09:45Z,INFO,redis,cache-01,Client connected from 10.0.2.20,10.0.2.20,,200,network
+2026-03-01T08:10:05Z,WARN,openssl,worker-node-02,OpenSSL error during renegotiation from 198.51.100.9 - possible MITM probe,198.51.100.9,,400,network
+2026-03-01T08:11:00Z,INFO,nginx,api-gateway-01,GET /api/v2/users HTTP/1.1 200,10.0.2.30,/api/v2/users,200,access
+2026-03-01T08:11:50Z,WARN,sshd,worker-node-01,Disconnecting: Too many authentication failures for root,198.51.100.15,,401,auth
+2026-03-01T08:12:20Z,INFO,systemd,worker-node-02,Service prometheus-exporter started,,,200,system
+2026-03-01T08:13:00Z,WARN,postfix,mail-relay-01,SASL PLAIN authentication failed for user mailbot@internal,,,401,auth
+2026-03-01T08:13:45Z,ERROR,nginx,api-gateway-01,upstream timed out (110: Connection timed out) while reading upstream,,,504,network
+2026-03-01T08:14:10Z,INFO,haproxy,lb-01,Health check passed for backend/app-01,,,200,network
+2026-03-01T08:14:55Z,WARN,snmpd,network-monitor-01,Interface eth1 utilisation above 85 percent threshold,,,200,network
+2026-03-01T08:15:30Z,INFO,postgresql,db-replica-01,Streaming replication reconnected to primary,,,200,database
+2026-03-01T08:16:00Z,WARN,openssl,api-gateway-01,Weak cipher TLS_RSA_WITH_3DES_EDE_CBC_SHA negotiated with 172.16.10.5,172.16.10.5,,200,network
+2026-03-01T08:16:45Z,INFO,nginx,api-gateway-01,DELETE /api/v2/session HTTP/1.1 200,10.0.3.20,/api/v2/session,200,access
+2026-03-01T08:17:30Z,WARN,sshd,bastion-01,Timeout before authentication for 203.0.113.77,203.0.113.77,,408,auth
+2026-03-01T08:18:00Z,ERROR,redis,cache-01,ERR Client exceeded max connections,,,429,network
+2026-03-01T08:18:55Z,INFO,systemd,db-primary-01,Service pgbouncer started successfully,,,200,system
+2026-03-01T08:19:20Z,WARN,postfix,mail-relay-01,Relay access denied for 198.51.100.88,198.51.100.88,,550,network
+2026-03-01T08:20:00Z,INFO,nginx,api-gateway-01,GET /api/v2/reports HTTP/1.1 200,10.0.1.5,/api/v2/reports,200,access
+2026-03-01T08:20:45Z,WARN,openssl,tls-terminator-01,Certificate chain incomplete for service payments.internal,,,200,network
+2026-03-01T08:21:10Z,INFO,haproxy,lb-01,Added backend server app-03 to rotation,,,200,network
+2026-03-01T08:22:00Z,ERROR,nginx,api-gateway-01,SSL_do_handshake failed SSL errors from 198.51.100.99,198.51.100.99,,400,network

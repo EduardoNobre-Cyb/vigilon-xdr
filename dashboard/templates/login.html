@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Vigilon - Login</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/vigilon-owl.svg') }}" type="image/svg+xml">
+    <link rel="alternate icon" href="{{ url_for('static', filename='images/vigilon-icon-192.png') }}" type="image/png">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/vigilon-icon-192.png') }}">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet" type="text/css"/>
+    <script src="{{ url_for('static', filename='js/login-redirect.js') }}"></script>
+  </head>
+  <body>
+
+    <div class="login-wrapper">
+
+      <div class="login-card">
+
+        <div class="login-header">
+          <!-- TODO: replace shield icon with Vigilon owl logo when the asset is provided. -->
+          <div class="login-shield">
+            <img src="{{ url_for('static', filename='images/vigilon-owl.svg') }}" alt="Vigilon" class="login-shield-img">
+          </div>
+          <h1 class="login-title">VIGILON</h1>
+          <p class="login-subtitle">Multi-Agent XDR Platform for Unified Log and Endpoint Threat Defense</p>
+          <div class="login-divider"></div>
+        </div>
+
+        <div class="login-prompt">
+          <span class="terminal-prefix">$&gt;</span>
+          <span class="terminal-text" id="terminal-text"></span>
+          <span class="terminal-cursor">█</span>
+        </div>
+
+        <form class="login-form" id="login-form" onsubmit="handleLogin(event)">
+
+          <div class="login-field">
+            <label class="login-label" for="email">// ANALYST EMAIL</label>
+            <input
+              class="login-input"
+              type="email"
+              id="email"
+              name="email"
+              placeholder="analyst@vigilon.local"
+              autocomplete="email"
+              required
+            />
+          </div>
+
+          <div class="login-field">
+            <label class="login-label" for="password">// PASSWORD</label>
+            <div class="password-wrapper">
+              <input
+                class="login-input"
+                type="password"
+                id="password"
+                name="password"
+                placeholder="••••••••••••"
+                autocomplete="current-password"
+                required
+              />
+              <button type="button" class="eye-toggle" onclick="togglePassword('password', this)" title="Show/hide password">👁</button>
+            </div>
+          </div>
+
+          <div class="login-error" id="login-error" style="display: none;"></div>
+
+          <button class="login-btn" type="submit" id="login-btn">
+            <span id="btn-text">[ AUTHENTICATE ]</span>
+          </button>
+
+        </form>
+
+        <div class="login-footer">
+          <span class="login-version">v2.0.0</span>
+          <span class="login-status">● SYSTEM ONLINE</span>
+        </div>
+
+      </div>
+
+    </div>
+
+    <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+
+  </body>
+</html>

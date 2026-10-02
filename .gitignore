@@ -1,0 +1,94 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.pyc
+*.pkl
+!data/models/
+!data/models/threat_classifier_v*/
+!data/models/threat_classifier_v*/*.pkl
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+postgresql_data/
+
+# Environment variables
+.env
+.env.local
+config.ini
+
+# Logs
+logs/
+*.log
+
+# Cache
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# Node (if using frontend tools)
+node_modules/
+package-lock.json
+yarn.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Redis
+dump.rdb
+
+# Container volumes/runtime
+postgres_data/
+redis_data/
+neo4j_data/
+neo4j_logs/
+
+# Runtime / backup files
+pids/
+*.bak
+
+# Not committed yet: Rampart WAF + GUI/mobile + Nginx (added later)
+waf/
+gui/
+nginx/
+docker/waf.Dockerfile
+docker/gui.Dockerfile
+docker-compose.yml
+.env.example

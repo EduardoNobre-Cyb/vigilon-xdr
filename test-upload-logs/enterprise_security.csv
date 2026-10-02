@@ -1,0 +1,52 @@
+timestamp,level,service,host,message,client_ip,cve_id,event_type,source
+2026-03-11T10:00:01Z,INFO,exchange,exchange-server-01,Microsoft Exchange Server 2019 started - 2400 mailboxes active,,,,mail
+2026-03-11T10:00:05Z,CRITICAL,exchange,exchange-server-01,CVE-2023-23397 Microsoft Outlook NTLM hash leak via calendar invite - victim user cfo@corp.internal targeted by 103.152.220.88,103.152.220.88,CVE-2023-23397,ntlm_relay_attack,security
+2026-03-11T10:00:10Z,ERROR,exchange,exchange-server-01,CVE-2023-23397 exploitation in progress - NTLM authentication relay captured from cfo@corp.internal to attacker SMB server 103.152.220.88,103.152.220.88,CVE-2023-23397,ntlm_relay_attack,security
+2026-03-11T10:00:15Z,WARN,exchange,exchange-server-01,Mailbox delegation abuse - user extern-consultant accessing executive mailboxes without explicit grant,,,,security
+2026-03-11T10:01:00Z,INFO,fortinet,fortinet-fw-01,Fortinet FortiGate firewall online - 1240 active sessions,,,fw_start,network
+2026-03-11T10:01:05Z,CRITICAL,fortinet,fortinet-fw-01,CVE-2022-40684 Fortinet authentication bypass exploit detected - unauthenticated config change via REST API from 45.86.163.50,45.86.163.50,CVE-2022-40684,auth_bypass,security
+2026-03-11T10:01:10Z,CRITICAL,fortinet,fortinet-fw-01,CVE-2022-40684 Fortinet firewall admin account created by attacker - username 'fortiadmin-backdoor' added via API from 45.86.163.50,45.86.163.50,CVE-2022-40684,privilege_escalation,security
+2026-03-11T10:01:15Z,ERROR,fortinet,fortinet-fw-01,Firewall policy change without change ticket - 3 DENY rules disabled on DMZ policy at 10:01:08Z,,,,security
+2026-03-11T10:02:00Z,INFO,f5-bigip,f5-bigip-01,F5 BIG-IP load balancer started - 18 virtual servers active,,,lb_start,network
+2026-03-11T10:02:05Z,CRITICAL,f5-bigip,f5-bigip-01,CVE-2022-1388 F5 BIG-IP iControl REST authentication bypass - unauthenticated API access from 103.77.224.100 creating admin account,103.77.224.100,CVE-2022-1388,auth_bypass,security
+2026-03-11T10:02:10Z,CRITICAL,f5-bigip,f5-bigip-01,CVE-2022-1388 F5 BIG-IP exploitation confirmed - arbitrary TMSH command execution achieved by 103.77.224.100 - system fully compromised,103.77.224.100,CVE-2022-1388,rce,security
+2026-03-11T10:02:15Z,ERROR,f5-bigip,f5-bigip-01,F5 BIG-IP SSL profile misconfiguration - TLS 1.0 still enabled on virtual server payment-portal-vip,,,,security
+2026-03-11T10:03:00Z,INFO,prtg,prtg-server-01,PRTG Network Monitor started - 4200 sensors monitoring 380 devices,,,monitor_start,monitoring
+2026-03-11T10:03:05Z,ERROR,prtg,prtg-server-01,PRTG credentials stored in plaintext in notification scripts - password exposed in sensor configuration,,,,security
+2026-03-11T10:03:10Z,WARN,prtg,prtg-server-01,SNMP community string 'public' still active on 34 network devices - information disclosure risk,,,,security
+2026-03-11T10:03:15Z,CRITICAL,prtg,prtg-server-01,Unauthorized PRTG admin login from external IP 185.125.204.100 - using default admin/prtgadmin credentials,185.125.204.100,,,auth_bypass,security
+2026-03-11T10:04:00Z,INFO,siem,siem-server-01,IBM QRadar SIEM started - 82 data sources configured,,,siem_start,security
+2026-03-11T10:04:05Z,WARN,siem,siem-server-01,SIEM rule suppression active for 7 critical rules - false positive tuning may be masking real threats,,,,security
+2026-03-11T10:04:10Z,ERROR,siem,siem-server-01,Event correlation engine lag - 14 minute delay in alerting during peak ingestion period,,,,performance
+2026-03-11T10:04:15Z,CRITICAL,siem,siem-server-01,Log source from fortinet-fw-01 stopped sending events - possible log tampering or agent compromise,,,,security
+2026-03-11T10:05:00Z,INFO,activedirectory,dc01-server,Active Directory domain controller started - 3200 user objects loaded,,,dc_start,directory
+2026-03-11T10:05:05Z,CRITICAL,activedirectory,dc01-server,Kerberoasting attack detected - 48 service account tickets requested in 2 minutes by user it-helpdesk from 10.10.15.44,10.10.15.44,,,kerberoasting,security
+2026-03-11T10:05:10Z,ERROR,activedirectory,dc01-server,DCSync attack in progress - non-DC host 10.10.15.44 requesting domain replication (GetChangesAll privilege),10.10.15.44,,,dcsync_attack,security
+2026-03-11T10:05:15Z,WARN,activedirectory,dc01-server,147 accounts with password last set over 365 days ago - potential stale credential risk,,,,security
+2026-03-11T10:06:00Z,INFO,citrix,citrix-gateway-01,Citrix ADC gateway started - 320 active remote access sessions,,,gw_start,network
+2026-03-11T10:06:05Z,CRITICAL,citrix,citrix-gateway-01,CVE-2023-3519 Citrix NetScaler unauthenticated RCE attempt from 185.220.100.244,185.220.100.244,CVE-2023-3519,rce_attempt,security
+2026-03-11T10:06:10Z,ERROR,citrix,citrix-gateway-01,Session hijacking attempt detected - 15 concurrent sessions sharing same session cookie TOKEN-abc12345,,,,session_hijacking,security
+2026-03-11T10:06:15Z,WARN,citrix,citrix-gateway-01,Citrix ADC firmware version 13.0.47 - 6 known vulnerabilities not patched,,,,security
+2026-03-11T10:07:00Z,INFO,exchange,exchange-server-02,Exchange transport service online - mail routing active,,,mail_start,mail
+2026-03-11T10:07:05Z,ERROR,exchange,exchange-server-02,BEC (Business Email Compromise) detected - inbox rule created by attacker forwarding all mail to outlook.external.com,,,,bec_attack,security
+2026-03-11T10:07:10Z,CRITICAL,exchange,exchange-server-02,Phishing campaign detected - 340 users received malicious email with CVE-2023-23397 calendar attachment from spoofed ceo@corp-internal.com,,,CVE-2023-23397,phishing,security
+2026-03-11T10:07:15Z,ERROR,exchange,exchange-server-02,DKIM signature validation failures - 89 outbound emails rejected by external servers,,,,mail_security
+2026-03-11T10:08:00Z,INFO,f5-bigip,f5-bigip-02,F5 BIG-IP secondary unit online - failover cluster active,,,lb_start,network
+2026-03-11T10:08:05Z,WARN,f5-bigip,f5-bigip-02,iRule with exec command detected on virtual server api-internal-vip - potential code injection vector,,,,security
+2026-03-11T10:08:10Z,ERROR,f5-bigip,f5-bigip-02,F5 BIG-IP management interface accessible from untrusted network - port 443 exposed to internet,,,,security
+2026-03-11T10:09:00Z,INFO,fortinet,fortinet-fw-02,FortiGate HA pair synchronized - active-passive failover ready,,,fw_ha,network
+2026-03-11T10:09:05Z,ERROR,fortinet,fortinet-fw-02,IPS signature database 6 months out of date - 2400 new threat signatures missing,,,,security
+2026-03-11T10:09:10Z,CRITICAL,fortinet,fortinet-fw-02,FortiGate SSL-VPN attacked - 800 authentication attempts from 194.165.16.100 in 10 minutes (password spray),194.165.16.100,,,password_spray,security
+2026-03-11T10:09:15Z,WARN,fortinet,fortinet-fw-02,GeoIP blocking disabled - traffic from 15 sanctioned countries allowed,,,,security
+2026-03-11T10:10:00Z,INFO,activedirectory,dc02-server,AD domain controller replica online - FSMO roles transferred successfully,,,dc_start,directory
+2026-03-11T10:10:05Z,CRITICAL,activedirectory,dc02-server,Golden Ticket attack suspected - Kerberos TGT with 10-year validity detected for domain admin account,,,,,security
+2026-03-11T10:10:10Z,ERROR,activedirectory,dc02-server,AdminSDHolder abuse - attacker modified SDHolder template to gain persistent domain admin rights,,,,persistence,security
+2026-03-11T10:10:15Z,WARN,activedirectory,dc02-server,Default domain admin account still active - should be renamed and disabled per security policy,,,,security
+2026-03-11T10:11:00Z,INFO,siem,siem-server-01,Threat intelligence feed updated - 12400 new IOCs loaded from MISP platform,,,ti_update,security
+2026-03-11T10:11:05Z,ERROR,siem,siem-server-01,SIEM license capacity exceeded - 340 GB/day ingested vs 200 GB/day licensed,,,,performance
+2026-03-11T10:11:10Z,CRITICAL,siem,siem-server-01,Critical alert: CVE-2022-40684 Fortinet exploitation correlated with CVE-2022-1388 F5 BIG-IP compromise - coordinated multi-target attack in progress,,,CVE-2022-40684,correlated_attack,security
+2026-03-11T10:11:15Z,WARN,prtg,prtg-server-01,15 sensors in error state - monitoring coverage gap on DMZ segment for past 2 hours,,,,monitoring
+2026-03-11T10:12:00Z,CRITICAL,activedirectory,dc01-server,Pass-the-hash attack detected - compromised NTLM hash from CVE-2023-23397 used for lateral movement to domain controller dc01-server from 10.10.15.44,10.10.15.44,CVE-2023-23397,lateral_movement,security
+2026-03-11T10:12:05Z,ERROR,exchange,exchange-server-01,Exchange Web Services (EWS) disabled due to active exploitation - email access disrupted for 2400 users,,,,availability
+2026-03-11T10:12:10Z,CRITICAL,citrix,citrix-gateway-01,Ransomware precursor activity - scheduled task created on Citrix gateway pointing to attacker infrastructure 185.220.100.244,185.220.100.244,,,ransomware_precursor,security
+2026-03-11T10:12:15Z,ERROR,f5-bigip,f5-bigip-01,F5 BIG-IP configuration backup sent to unknown SFTP server 45.86.163.50 - possible data exfiltration,45.86.163.50,,,exfiltration,security

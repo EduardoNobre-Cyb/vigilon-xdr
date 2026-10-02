@@ -1,0 +1,5 @@
+timestamp,user,action,result,severity
+2026-06-17T10:35:00Z,root,privilege_escalation,success,CRITICAL
+2026-06-17T10:36:00Z,guest,file_delete,success,HIGH
+2026-06-17T10:37:00Z,service_account,data_exfil,blocked,CRITICAL
+2026-06-17T10:38:00Z,admin,config_change,success,MEDIUM

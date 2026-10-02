@@ -1,0 +1,125 @@
+/* Vigilon post-login splash. Only shown when <html> has the "splash-pending" class. */
+
+/* Hide the dashboard until the splash is on top of it (stops a flash of the page) */
+html.splash-pending { overflow: hidden; background: #0D0B18; }
+html.splash-pending body { visibility: hidden; }
+
+#vg-splash {
+  --sp-bg: #0D0B18;
+  --sp-line: rgba(169, 155, 255, 0.14);
+  --sp-text: #ECE9F8;
+  --sp-muted: #9C96BD;
+  --sp-accent: #A99BFF;
+  --sp-ok: #3FD08E;
+  --sp-warn: #F3B540;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  visibility: visible; /* shows even though <body> is hidden */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  color: var(--sp-text);
+}
+#vg-splash .sp-bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 70% at 50% 45%, #1B1636 0%, #0B0916 70%);
+}
+#vg-splash .sp-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background-image: linear-gradient(var(--sp-line) 1px, transparent 1px),
+                    linear-gradient(90deg, var(--sp-line) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: center;
+  mask-image: radial-gradient(circle at 50% 45%, #000 0%, transparent 45%);
+  -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 0%, transparent 45%);
+}
+
+/* Owl + ring */
+#vg-splash .sp-emblem { position: relative; width: 280px; height: 280px; max-width: 70vw; max-height: 70vw; }
+#vg-splash .sp-owl { position: absolute; left: 50%; top: 50%; width: 44%; translate: -50% -50%; }
+#vg-splash .sp-owl svg { display: block; width: 100%; height: auto; overflow: visible; position: relative; }
+#vg-splash .sp-glow {
+  position: absolute;
+  inset: -30%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(123, 106, 230, .45) 0%, rgba(123, 106, 230, 0) 65%);
+  opacity: 0;
+}
+#vg-splash .sp-fill { opacity: 0; }
+#vg-splash .sp-trace path,
+#vg-splash .sp-trace circle {
+  fill: none;
+  stroke: var(--sp-accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1 1.1;   /* with pathLength="1": the whole line is one dash */
+  stroke-dashoffset: 1.05;   /* ...pushed out of view until animated to 0 */
+}
+#vg-splash .sp-anchors > * { opacity: 0; }
+#vg-splash .sp-anchors rect { fill: var(--sp-bg); stroke: var(--sp-accent); stroke-width: 3; }
+#vg-splash .sp-anchors line { stroke: var(--sp-accent); stroke-width: 2; opacity: .7; }
+#vg-splash .sp-anchors circle { fill: var(--sp-accent); }
+#vg-splash .sp-dot { opacity: 0; }
+#vg-splash .sp-eye { transform-box: fill-box; transform-origin: center; }
+
+#vg-splash .sp-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
+#vg-splash .sp-ring .ticks {
+  fill: none;
+  stroke: rgba(169, 155, 255, .35);
+  stroke-width: 3;
+  stroke-dasharray: 1 5;
+  transform-box: view-box;
+  transform-origin: 100px 100px;
+  animation: vg-spin 60s linear infinite;
+}
+#vg-splash .sp-ring .inner { fill: none; stroke: rgba(169, 155, 255, .18); stroke-width: 1; }
+#vg-splash .sp-ring .track { fill: none; stroke: rgba(169, 155, 255, .12); stroke-width: 6; }
+#vg-splash .sp-ring .seg {
+  fill: none;
+  stroke: var(--sp-accent);
+  stroke-width: 6;
+  stroke-dasharray: 1 1.1;
+  stroke-dashoffset: 1.05;
+  transition: stroke .6s ease;
+}
+#vg-splash .sp-ring .seg.ok { stroke: var(--sp-ok); }
+#vg-splash .sp-ring .seg.warn { stroke: var(--sp-warn); }
+@keyframes vg-spin { to { transform: rotate(360deg); } }
+
+/* Words and loading status */
+#vg-splash .sp-words { position: relative; text-align: center; opacity: 0; }
+#vg-splash .sp-wordmark {
+  font: 600 32px "Sora", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: .01em;
+  line-height: 1.1;
+}
+#vg-splash .sp-tag {
+  font: 500 12px "Share Tech Mono", "Courier New", monospace;
+  letter-spacing: .42em;
+  text-indent: .42em; /* balances the letter-spacing so the word stays centred */
+  text-transform: uppercase;
+  color: var(--sp-accent);
+  margin-top: 6px;
+}
+#vg-splash .sp-status {
+  position: absolute;
+  left: 50%;
+  bottom: 48px;
+  width: min(360px, calc(100% - 48px));
+  translate: -50% 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font: 13px "Share Tech Mono", "Courier New", monospace;
+  color: var(--sp-muted);
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+}
+#vg-splash .sp-status .warn { color: var(--sp-warn); }

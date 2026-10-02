@@ -1,0 +1,2 @@
+* text=auto eol=lf
+data/models/**/*.pkl filter=lfs diff=lfs merge=lfs -text
