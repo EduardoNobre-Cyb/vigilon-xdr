@@ -1,8 +1,12 @@
+<p align="center">
+  <img src="docs/assets/vigilon-banner.svg" alt="Vigilon XDR Platform" width="100%">
+</p>
+
 # Vigilon
 
 **Multi-Agent XDR Platform for Unified Log and Endpoint Threat Defense**
 
-Final-year cybersecurity multi-agent platform for ingesting logs, classifying threats, detecting patterns/anomalies, generating attack paths, and coordinating response actions through a live analyst dashboard.
+Cybersecurity multi-agent platform for ingesting logs, classifying threats, detecting patterns/anomalies, generating attack paths, endpoint detection and coordinating response actions through a live analyst dashboard.
 
 ## Features
 
