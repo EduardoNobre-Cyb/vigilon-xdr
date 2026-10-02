@@ -92,3 +92,7 @@ docker/waf.Dockerfile
 docker/gui.Dockerfile
 docker-compose.yml
 .env.example
+
+# Runtime models used by Sensor and Sentinel
+!data/models/EDR/*.pkl
+!data/models/threat_hunter.pkl
