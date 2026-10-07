@@ -70,6 +70,29 @@ flowchart LR
 - **Pattern detection (Sentinel):** an ML model over threat-sequence features detects multi-stage attacks, alongside fuzzy matching of tactic sequences.
 - **Instrumentation:** inference latency, false-positive rate and model accuracy are tracked at runtime, with OpenTelemetry counters on the agents.
 
+## Endpoint detection — live validation
+
+<p align="center">
+  <img src="docs/assets/edr-console.png" alt="Vigilon EDR console — live endpoint detections" width="90%">
+</p>
+
+Vigilon Sensor's Linux endpoint models were validated against a live attack suite in an isolated VM, with the agent running as a production systemd service (kernel-level `auditd` collection, ML-first scoring).
+
+| Metric | Result |
+|---|---|
+| Live false-positive rate | **0.00%** — 0 benign flags across 12,482 real process decisions |
+| In-sample benign FP rate (offline) | 0.056% (9 / 16,010) |
+| Attack detection — reverse shells & LOLBins (B1–B10) | **100%** flagged |
+| Generalisation to unseen command structures (B11) | 5 / 6 novel forms caught |
+| Network reverse-shell detection | ML **0.82**, heuristic 0.74 — validated live |
+| Promotion gate | ≤ 5% FP, ≥ 80% detection, process/network F1 ≥ 0.85 |
+
+The models are trained on ~50,000 real benign process events captured on a live Linux host, combined with catalogued attack behaviour grounded in GTFOBins and MITRE ATT&CK — covering **T1059** (command and scripting interpreters), **T1071** (application-layer C2), reverse shells over `/dev/tcp`, `/dev/udp`, socat/php/perl, and living-off-the-land binaries.
+
+Several of these results came from debugging the **telemetry pipeline**, not the model: `auditd` hex-encodes special-character arguments (which were silently truncating payloads before they reached the model), and binaries that log under versioned or aliased names (`nc.traditional`, `socat1`, `python3.13`) had to be normalised before detection worked. In each case the fix was in how events were *captured*, not the ML.
+
+> **Honest limitations.** The 5% false-positive gate is deliberately generous — production EDRs target ~0.1%. The attack data is catalogued/synthetic rather than real malware, so the near-perfect separation reflects a clean learning dataset, not production-grade accuracy. Validation against real malware samples and the Windows sensor reaching parity are the next milestones — measuring where the system is generous matters more than hiding it.
+
 ## Tech stack
 
 | Area | Technology |
@@ -183,7 +206,9 @@ test-upload-logs/         sample logs for demoing the pipeline
 
 ## Background
 
-Vigilon began as a college multi-agent log ingestion project. It has since grown into a personal project for self-directed learning: an end-to-end XDR platform covering log analytics, ML threat classification, threat hunting, automated response and endpoint detection.
+Vigilon has been built incrementally since **February 2026**, starting as a multi-agent log-analytics pipeline — ingestion, threat modeling, ML classification, threat hunting and automated response. In **June/July 2026** the endpoint-detection work — on-device ML sensors scoring process and network behaviour before anything reaches an analyst — extended it from a log-analytics system into a full **XDR** platform, correlating endpoint, network and log telemetry under one pipeline.
+
+It is a self-directed learning project. Every architecture decision — from the VM isolation design to keeping a strict false-positive gate on model promotion — is deliberate and documented, with the goal of understanding how a real EDR/XDR works by building one end to end rather than wiring together off-the-shelf parts.
 
 ## License
 
