@@ -1,190 +1,170 @@
-<p align="center">
-  <img src="docs/assets/vigilon-banner.svg" alt="Vigilon XDR Platform" width="100%">
-</p>
-
 # Vigilon
 
 **Multi-Agent XDR Platform for Unified Log and Endpoint Threat Defense**
 
-Vigilon is a self-built extended detection and response (XDR) platform. Six cooperating agents ingest logs, model the attack surface, classify threats with machine learning, hunt for multi-stage attacks, coordinate responses, and collect live telemetry from Linux and Windows endpoints. Analysts work everything from a single real-time dashboard.
+Final-year cybersecurity multi-agent platform for ingesting logs, classifying threats, detecting patterns/anomalies, generating attack paths, and coordinating response actions through a live analyst dashboard.
 
-The endpoint detection side was inspired by CrowdStrike's research on machine-learning malware detection in the Falcon platform: behavioural models score every process and network event on the endpoint itself, before anything reaches the analyst.
+## Features
 
----
+- **Vigilon Intake** (Log Ingestion): syslog, CSV and JSON log ingestion and enrichment
+- **Vigilon Atlas** (Threat Modeling & Attack Paths): attack graph generation with Neo4j and MITRE ATT&CK mapping
+- **Vigilon Triage** (Threat Classification): ML-based threat classification and confidence scoring
+- **Vigilon Sentinel** (Threat Hunting): IOC correlation, anomaly/pattern detection
+- **Vigilon Warden** (Response Coordination): automated response flow and analyst support actions
+- **Vigilon Sensor** (Endpoint Collector): Linux and Windows endpoint telemetry
+- Analyst Dashboard: Flask + SocketIO UI for monitoring, reviewing threats, and operating agents
+- PostgreSQL persistence via SQLAlchemy models in [data/models/models.py](data/models/models.py)
+- Redis message bus for inter-agent communication and heartbeat tracking
 
-## The agents
+## Tech Stack
 
-| Agent | Role | What it does |
-|---|---|---|
-| **Vigilon Intake** | Log ingestion | Parses syslog, CSV and JSON logs, normalises timestamps and fields, and enriches events before storage |
-| **Vigilon Atlas** | Threat modeling and attack paths | Infers the system architecture from logs, builds an attack graph in Neo4j, maps vulnerabilities to MITRE ATT&CK techniques, and ranks attack paths by feasibility |
-| **Vigilon Triage** | Threat classification | Classifies threats with a Word2Vec + metadata + calibrated Gradient Boosting model, with confidence scoring and CVSS-based risk and severity |
-| **Vigilon Sentinel** | Threat hunting | Correlates threats by entity, matches IOCs, flags statistical anomalies (z-score baselines), detects multi-stage attack sequences with an ML pattern model, and pulls external intel from AlienVault OTX, MISP and AbuseIPDB |
-| **Vigilon Warden** | Response coordination | Applies response rules (monitor, alert, contain, isolate, block, escalate) and notifies the right analysts by email, Slack or Microsoft Teams |
-| **Vigilon Sensor** | Endpoint collector (EDR) | Lightweight Linux and Windows agents that score process and network activity with on-device ML models, stream telemetry to the platform, and run analyst actions such as killing a process or quarantining a file |
+- Python, Flask, Flask-SocketIO
+- SQLAlchemy + PostgreSQL
+- Redis (pub/sub + heartbeat/status)
+- Neo4j (attack graph storage and traversal)
+- scikit-learn / NumPy / Pandas (ML)
 
-## Architecture
+## Quick Start (Docker, Recommended)
 
-```mermaid
-flowchart LR
-    subgraph Endpoints
-        L["Vigilon Sensor<br/>Linux · psutil / auditd"]
-        W["Vigilon Sensor<br/>Windows · psutil"]
-    end
+Prerequisites:
 
-    subgraph Pipeline["Agent pipeline (Redis pub/sub)"]
-        I["Intake<br/>log ingestion"] --> A["Atlas<br/>attack graph + MITRE"]
-        A -- threat_intelligence --> T["Triage<br/>ML classification"]
-        T -- classified_threats --> S["Sentinel<br/>threat hunting"]
-        S -- hunting_results --> R["Warden<br/>response"]
-    end
+- Docker
+- Docker Compose
+- Git LFS (required if committing model artifacts in data/models)
 
-    D["Analyst Dashboard<br/>Flask + Socket.IO"]
-    D -- log_uploaded --> I
-    L <-- "telemetry / actions<br/>(Socket.IO)" --> D
-    W <-- "telemetry / actions<br/>(Socket.IO)" --> D
-    R -- "email · Slack · Teams" --> N["Analysts"]
+Compose command compatibility:
 
-    A --- G[("Neo4j")]
-    D --- P[("PostgreSQL")]
-    Pipeline --- P
-```
+- Use docker compose if your system has the Compose plugin.
+- Use docker-compose if docker compose is not available.
 
-## Dashboard features
-
-- **Live threat feed** with severity, confidence, MITRE tactic and the response taken
-- **Analyst review queue**: claim and lock threats so two analysts never work the same one, approve or override decisions, and feed curated labels back into training
-- **EDR console**: connected endpoints, live telemetry, detections, search, and one-click response actions
-- **Attack surface**: assets, vulnerabilities and ranked attack paths
-- **Agent control**: start and stop agents, check health via Redis heartbeats, and stream their logs live
-- **Model registry**: every retrained model is registered with its metrics and must be approved by a human before it is deployed (hot-reloaded without a restart)
-- **Analyst management** with roles, notification thresholds, JWT authentication and forced password changes
-- **Reviewer analytics** and a full audit trail of response actions and notifications
-- **Log upload**, which triggers the whole agent pipeline end to end
-
-## Machine learning
-
-- **Threat classification (Triage):** Word2Vec text embeddings combined with structured metadata features feed a Gradient Boosting classifier with probability calibration. Each model generation (v2 to v8) is kept in `data/models/threat_classifier_v*`.
-- **Quality gates:** a new model is only promoted if it meets thresholds for macro-F1, accuracy, average confidence and calibration error (ECE and Brier score). All thresholds are configurable through `THREAT_*` environment variables.
-- **Endpoint models (Sensor):** separate process and network behaviour models (Random Forest and Gradient Boosting, with SMOTE to balance the classes), trained on real benign telemetry captured with auditd plus catalogued attack behaviour.
-- **Pattern detection (Sentinel):** an ML model over threat-sequence features detects multi-stage attacks, alongside fuzzy matching of tactic sequences.
-- **Instrumentation:** inference latency, false-positive rate and model accuracy are tracked at runtime, with OpenTelemetry counters on the agents.
-
-## Tech stack
-
-| Area | Technology |
-|---|---|
-| Backend and API | Python, Flask, Flask-SocketIO, Flask-JWT-Extended |
-| Data | PostgreSQL + SQLAlchemy, Neo4j (attack graphs), Redis (pub/sub and heartbeats) |
-| ML | scikit-learn, gensim (Word2Vec), imbalanced-learn, NumPy, pandas, NLTK |
-| Threat intel | MITRE ATT&CK (`mitreattack-python`), Vulners CVE API, AlienVault OTX, MISP, AbuseIPDB |
-| Endpoint | psutil, Linux auditd, python-socketio client |
-| Ops | Docker, APScheduler, OpenTelemetry, Git LFS for model artifacts |
-
-## Getting started
-
-### 1. Start the backing services
+From the project root:
 
 ```bash
-docker run -d --name vigilon-postgres -p 5432:5432 \
-  -e POSTGRES_USER=threat_user -e POSTGRES_PASSWORD=threat_password -e POSTGRES_DB=threat_modeling postgres:16
-docker run -d --name vigilon-redis -p 6379:6379 redis:7-alpine
-docker run -d --name vigilon-neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/neo4jpassword neo4j:5
+docker compose up --build
 ```
 
-These are local development credentials. Change them for anything that isn't local.
-
-### 2. Install and configure
+If your environment uses docker-compose:
 
 ```bash
-git lfs install && git lfs pull        # model artifacts are stored in Git LFS
-python -m venv .venv && source .venv/bin/activate
+docker-compose up --build
+```
+
+What this starts:
+
+- Dashboard/API: http://localhost:5000
+- PostgreSQL: localhost:5432
+- Redis: localhost:6379
+- Neo4j Browser: http://localhost:7474
+- Neo4j Bolt: localhost:7687
+
+On startup, the app container automatically:
+
+- waits for PostgreSQL
+- creates all SQLAlchemy tables from [data/models/models.py](data/models/models.py)
+- seeds only [analysts](data/models/models.py) and [external_iocs](data/models/models.py) with the fixed review dataset
+
+Seeded analysts and IOC records are defined in [scripts/init_database.py](scripts/init_database.py).
+
+## Local Development (Without Docker)
+
+1. Create and activate a virtual environment.
+2. Install dependencies:
+
+```bash
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the project root (see [Configuration](#configuration)). At minimum, set:
-
-```env
-DATABASE_URL=postgresql+psycopg2://threat_user:threat_password@localhost:5432/threat_modeling
-JWT_SECRET_KEY=<a long random string>
-NEO4J_PASSWORD=neo4jpassword
-DEFAULT_PASSWORD=<temporary password for seeded analysts>
-```
-
-### 3. Initialise the database and run the dashboard
+3. Copy environment template and edit values:
 
 ```bash
-python scripts/init_database.py      # creates the tables and seeds analysts and IOCs
-python -m dashboard.app              # http://localhost:5000
+cp .env.example .env
 ```
 
-Start the agents from the dashboard's agent panel, or run any of them directly:
+4. Provide environment variables (example below).
+5. Run the dashboard:
 
 ```bash
-python -m agents.threat_modeling.threat_model_agent --mode listen
-python -m agents.classification.classifier_agent --mode listen
-python -m agents.threat_hunter.threat_hunter_agent --mode listen
-python -m agents.response_coordinator.response_coordinator_agent --mode listen
+python -m dashboard.app
 ```
 
-### 4. Connect an endpoint (optional)
+## Environment Variables
+
+Core:
+
+- DATABASE_URL (required)
+- JWT_SECRET_KEY (required)
+
+Service connectivity:
+
+- REDIS_HOST (default: localhost)
+- REDIS_PORT (default: 6379)
+- REDIS_DB (default: 0)
+- NEO4J_URI (default: bolt://localhost:7687)
+- NEO4J_USERNAME (default: neo4j)
+- NEO4J_PASSWORD (default: neo4j)
+
+Optional integrations:
+
+- VULNERS_API_KEY (optional, CVE enrichment is disabled if unset)
+- SLACK_WEBHOOK_URL
+- TEAMS_WEBHOOK_URL
+- SLACK_ENABLED (true/false)
+- TEAMS_ENABLED (true/false)
+
+Mail:
+
+- MAIL_SERVER
+- MAIL_PORT
+- MAIL_USE_TLS
+- MAIL_USE_SSL
+- MAIL_USERNAME
+- MAIL_PASSWORD
+- MAIL_DEFAULT_SENDER
+
+## Project Structure
+
+- [agents](agents): all 4 core agents
+- [dashboard](dashboard): web dashboard + API routes
+- [data](data): training data, MITRE dataset, SQLAlchemy models
+- [shared](shared): message bus and logging utilities
+- [vulnerability_enrichment](vulnerability_enrichment): CVE fetch and scheduler logic
+- [scripts](scripts): ML training/retraining scripts
+
+## Notes for Lecturers and Reviewers
+
+- The easiest reproducible setup is Docker Compose.
+- The database schema is generated from code-first SQLAlchemy models.
+- Neo4j and Redis are included in the compose stack for full agent functionality.
+
+### Export Full Model Version History (No Terminal Truncation)
+
+Use CSV export from PostgreSQL to capture all rows from models table:
 
 ```bash
-# Linux (use PROCESS_COLLECTOR=auditd for kernel-level exec events; needs root)
-BACKEND_URL=http://<platform-host>:5000 python -m agents.endpoint_agent.linux_agent
-
-# Windows (PowerShell)
-$env:BACKEND_URL="http://<platform-host>:5000"; python -m agents.endpoint_agent.windows_agent
+docker compose exec postgres psql -U threatuser -d threatdefense -c "\\copy models to '/tmp/models_full.csv' csv header"
+docker compose cp postgres:/tmp/models_full.csv ./models_full.csv
 ```
 
-Upload any file from `test-upload-logs/` in the dashboard to watch the full pipeline run.
+If you want schema + data in SQL form for lecturers:
 
-### Docker image
-
-The root `Dockerfile` builds the dashboard and API. At startup it waits for PostgreSQL, initialises the schema, downloads the NLTK corpora and launches the dashboard (see `docker/entrypoint.sh`).
-
-## Configuration
-
-All configuration comes from environment variables (`.env`). Secrets never live in the code.
-
-| Group | Variables |
-|---|---|
-| Core | `DATABASE_URL`, `JWT_SECRET_KEY`, `DEFAULT_PASSWORD`, `SKIP_DB_SEED` |
-| Services | `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` |
-| Threat intel | `VULNERS_API_KEY`, `OTX_API_KEY`, `MISP_API_URL`, `MISP_API_KEY`, `ABUSEDB_API_KEY`, `CVE_MIN_YEAR` |
-| Notifications | `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SLACK_ENABLED`, `SLACK_WEBHOOK_URL`, `TEAMS_ENABLED`, `TEAMS_WEBHOOK_URL` |
-| Models | `PATTERN_MODEL_PATH`, `EDR_MODEL_DIR`, `THREAT_CALIBRATION_METHOD`, `THREAT_GATE_*`, `THREAT_WINNER_*` |
-| Endpoint sensor | `BACKEND_URL`, `PROCESS_COLLECTOR` (`polling` or `auditd`), `ML_FIRST_MODE`, `TELEMETRY_POLL_INTERVAL`, `PROCESS_EVENT_MIN_SCORE` |
-| Logging | `LOG_MAX_MB`, `LOG_RETENTION_DAYS` |
-
-All threat-intel and notification integrations are optional. Each one is skipped if its key isn't set.
-
-## Project structure
-
-```
-agents/
-  log_ingestor/           Vigilon Intake
-  threat_modeling/        Vigilon Atlas (+ attack path ranker)
-  classification/         Vigilon Triage
-  threat_hunter/          Vigilon Sentinel (+ baselines, threat intel)
-  response_coordinator/   Vigilon Warden
-  endpoint_agent/         Vigilon Sensor (Linux + Windows)
-  ml_training/            synthetic data and performance monitoring
-dashboard/                Flask + Socket.IO dashboard and REST API
-data/
-  models/                 SQLAlchemy models, promotion workflow, trained model artifacts (LFS)
-  training/EDR/           endpoint telemetry datasets
-  mitre/                  MITRE ATT&CK enterprise dataset
-shared/                   Redis message bus, agent names, rotating log config
-vulnerability_enrichment/ CVE fetcher and scheduler
-scripts/                  training, retraining, evaluation and dataset tooling
-test-upload-logs/         sample logs for demoing the pipeline
+```bash
+docker compose exec postgres pg_dump -U threatuser -d threatdefense --table=models > models_full.sql
 ```
 
-## Background
+### Import Existing Database Into Docker Compose
 
-Vigilon began as a college multi-agent log ingestion project. It has since grown into a personal project for self-directed learning: an end-to-end XDR platform covering log analytics, ML threat classification, threat hunting, automated response and endpoint detection.
+If you already have a PostgreSQL dump and want Docker to use it as-is:
+
+```bash
+docker compose up -d postgres
+docker compose exec -T postgres dropdb -U threat_user --if-exists threat_modeling
+docker compose exec -T postgres createdb -U threat_user threat_modeling
+docker compose exec -T postgres pg_restore -U threat_user -d threat_modeling --clean --if-exists < full_db.dump
+SKIP_DB_SEED=true docker compose up -d app redis neo4j
+```
+
+Use `SKIP_DB_SEED=true` to prevent startup seed data from overwriting imported `analysts` and `external_iocs` rows.
 
 ## License
 
-© 2026 Eduardo Nobre. All rights reserved.
+Academic project submission.

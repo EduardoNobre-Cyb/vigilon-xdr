@@ -1,5 +1,6 @@
 import os
 import math
+import re
 import hashlib
 from typing import Dict, List
 from datetime import datetime
@@ -17,7 +18,7 @@ class ProcessFeatureExtractor:
             "psexec.exe", "wmic", "wmic.exe", "rundll32",
             "rundll32.exe", "regsvcs", "certutil", "certutil.exe", "cscript", "cscript.exe",
             "wscript", "wscript.exe", "mshta", "mshta.exe", "schtasks", "sc", "taskkill",
-            "reg", "whoami", "nc", "ncat", "netcat", "sh", "bash", "dash", "zsh", "perl"
+            "reg", "whoami", "nc", "ncat", "netcat", "sh", "bash", "dash", "zsh", "perl", "gawk", "awk", "find", "socat", "php"
         }
 
         # Known benign parent processes
@@ -51,6 +52,7 @@ class ProcessFeatureExtractor:
             "netcat": "nc",
         }
         proc_name = name_aliases.get(proc_name, proc_name)
+        proc_name = self._strip_version(proc_name)
         features["is_suspicious_process"] = 1.0 if proc_name in self.suspicious_processes else 0.0
         features["process_name_length"] = min(len(proc_name) / 50, 1.0)
         # Normalize
@@ -61,7 +63,7 @@ class ProcessFeatureExtractor:
         features["cmdline_entropy"] = self._calculate_entropy(cmdline)
 
         # Suspicious keywords count
-        keywords = ["powershell", "cmd", "-enc", "shell", "execute", "bypass", "hidden", "obf", "base64", "curl", "wget", "| bash", "| sh", "/dev/tcp/", "nc -e", "nc -vz", "ncat", "chmod +s", "/dev/shm", "-qo-"]
+        keywords = ["powershell", "cmd", "-enc", "execute", "bypass", "hidden", "obf", "base64", "curl", "wget", "| bash", "| sh", "/dev/tcp/", "nc -e", "nc -vz", "ncat", "chmod +s", "/dev/shm", "-qo-", "system(", "pty.spawn", "-exec /bin/sh", "-exec /bin/bash", "fsockopen", "tcp-connect:", "exec:/bin/", "sh -i", "socket.socket"]
         keyword_count = sum(1 for kw in keywords if kw in cmdline)
         features["suspicious_keywords_count"] = min(keyword_count / 5, 1.0)
 
@@ -85,11 +87,15 @@ class ProcessFeatureExtractor:
         features["is_first_seen"] = float(event.get("is_first_seen", False))
 
         # Filename features
-        filename = os.path.basename(path)
+        filename = self._strip_version(os.path.basename(path))
         features["filename_length"] = min(len(filename) / 100, 1.0)
         features["has_long_extension"] = 1.0 if filename.count(".") > 1 else 0.0
 
         return features
+
+    def _strip_version(self, name: str) -> str:
+        match = re.match(r"^(python3|php|socat|perl|ruby|lua|note)[\d.]+$", name)
+        return match.group(1) if match else name
     
     def _calculate_entropy(self, text: str) -> float:
         """Calculate Shannon entropy of text [0-1]"""

@@ -88,6 +88,7 @@ pids/
 waf/
 gui/
 nginx/
+data/waf/
 docker/waf.Dockerfile
 docker/gui.Dockerfile
 docker-compose.yml

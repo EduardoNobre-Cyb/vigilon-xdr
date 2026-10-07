@@ -35,6 +35,26 @@ def _parent_name(ppid) -> str:
     except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError, TypeError):
         return "unknown"
 
+def _decode_args(execve_line: str) -> list:
+    argc_match = re.search(r"\bargc=(\d+)", execve_line)
+    argc = int(argc_match.group(1)) if argc_match else 0
+    args = []
+    for index in range(argc if argc else 64):
+        quoted = re.search(rf'\ba{index}="([^"]*)"', execve_line)
+        if quoted:
+            args.append(quoted.group(1))
+            continue
+        hexed = re.search(rf"\ba{index}=([0-9A-Fa-f]+)(?=\s|$)", execve_line)
+        if hexed:
+            try:
+                args.append(bytes.fromhex(hexed.group(1)).decode("utf-8", "replace"))
+            except ValueError:
+                args.append("")
+            continue
+        if not argc:
+            break
+    return args
+
 
 class AuditdProcessCollector:
     """Read auditd EXECVE records and emit normalized process events."""
@@ -56,12 +76,7 @@ class AuditdProcessCollector:
         ppid = int(_field(r"\bppid=(\d+)", syscall_line, "0"))
         uid = _field(r"\buid=(\d+)", syscall_line, "")
 
-        arguments = []
-        for index in range(64):
-            value = _field(rf'a{index}="([^"]*)"', execve_line, "")
-            if value == "":
-                break
-            arguments.append(value)
+        arguments = _decode_args(execve_line)
 
         command_line = " ".join(arguments) or process_name
         is_first_seen = executable not in self.seen_executables

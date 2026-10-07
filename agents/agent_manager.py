@@ -1,4 +1,5 @@
 import uuid
+import os
 import json
 import logging
 from datetime import datetime, timezone
@@ -10,20 +11,22 @@ from sqlalchemy import func
 from data.models.models import Agent, TelemetryEvent, AgentAction, ThreatClassification
 from agents.classification.classifier_agent import ThreatClassificationAgent
 from threading import Thread
+from shared.notify import alerts_enabled, send_alert
 
 
 logger = logging.getLogger(__name__)
 
-# Store active WebSocket connections: {agent_id: session_id}
 ACTIVE_AGENTS = {}
 
-# These will be set by register_agent_handlers()
+EDR_STATUS_ALERTS = os.environ.get("EDR_STATUS_ALERTS", "true").lower() == "true"
+OFFLINE_GRACE_SECONDS = int(os.environ.get("EDR_OFFLINE_GRACE_SECONDS", "60"))
+_offline_alerted = set()
+
 _socketio = None
 _get_db_session = None
 
 
 def _get_real_db_session():
-    """Return a real SQLAlchemy session from either a direct factory or a contextmanager factory."""
     if _get_db_session is None:
         raise RuntimeError("Database session factory is not initialized")
 
@@ -39,14 +42,12 @@ def _get_real_db_session():
 
 
 def register_agent_handlers(socketio, get_db_session):
-    """Register all agent WebSocket handlers. Call this from app.py after socketio is created."""
     global _socketio, _get_db_session
     _socketio = socketio
     _get_db_session = get_db_session
 
     @socketio.on("agent_register")
     def handle_agent_register(data):
-        """Agent sends registration/heartbeat with metadata"""
         db, managed = _get_real_db_session()
         try:
             agent_id = data.get("agent_id")
@@ -57,11 +58,10 @@ def register_agent_handlers(socketio, get_db_session):
                 emit("error", {"message": "Missing required agent metadata"})
                 return
             
-            # Check if agent exists
             agent = db.query(Agent).filter_by(agent_id=agent_id).first()
+            is_new = agent is None
 
             if agent:
-                # Update heartbeat and status
                 agent.status = "online"
                 agent.last_heartbeat = datetime.now(timezone.utc)
                 agent.os_version = data.get("os_version")
@@ -69,7 +69,6 @@ def register_agent_handlers(socketio, get_db_session):
                 agent.ip_address = data.get("ip_address")
                 logger.info(f"Agent heartbeat: {agent_id} ({hostname})")
             else:
-                # Register new agent
                 agent = Agent(
                     agent_id=agent_id,
                     hostname=hostname,
@@ -84,11 +83,10 @@ def register_agent_handlers(socketio, get_db_session):
             db.add(agent)
             db.commit()
 
-            # Track active connection
             ACTIVE_AGENTS[agent_id] = request.sid
-            join_room(agent_id)  # SocketIO room for broadcasting
+            join_room(agent_id)
+            _announce_online(agent_id, hostname, os_type, is_new)
 
-            # Send pending actions to agent
             pending_actions = db.query(AgentAction).filter_by(agent_id=agent.id, status="pending").all()
 
             for action in pending_actions:
@@ -119,7 +117,6 @@ def register_agent_handlers(socketio, get_db_session):
 
     @socketio.on("telemetry")
     def handle_telemetry(data):
-        """Agent sends telemetry events"""
         db, managed = _get_real_db_session()
         try:
             agent_id = data.get("agent_id")
@@ -130,10 +127,8 @@ def register_agent_handlers(socketio, get_db_session):
                 emit("error", {"message": f"Unknown Agent: {agent_id}"})
                 return
         
-            # Update heartbeat
             agent.last_heartbeat = datetime.now(timezone.utc)
 
-            # Ingest telemetry
             for event in events:
                 try:
                     event_data = event.get("data") or event.get("event_data", {})
@@ -170,7 +165,6 @@ def register_agent_handlers(socketio, get_db_session):
             logger.info("Ingested %s telemetry events from %s", len(events), agent_id)
             emit("telemetry_ack", {"count": len(events)})
 
-            # Trigger threat analysis pipeline, running classification as a background task to avoid blockage
             if events:
                 def run_threat_analysis():
                     analysis_db, _ = _get_real_db_session()
@@ -181,7 +175,6 @@ def register_agent_handlers(socketio, get_db_session):
                                 value = event.get("network_risk_score", 0)
                             return _coerce_confidence(value)
 
-                        # Filter high-confidence events from ML models
                         high_conf_events = [
                             e for e in events
                             if (normalize_event_confidence(e) > 0.70)
@@ -193,7 +186,6 @@ def register_agent_handlers(socketio, get_db_session):
                         
                         classifier = ThreatClassificationAgent()
 
-                        # Send each endpoint event to Vigilon Triage for classification
                         for event in high_conf_events:
                             confidence = _coerce_confidence(
                                 event.get("malware_confidence")
@@ -211,7 +203,6 @@ def register_agent_handlers(socketio, get_db_session):
                             exploitability_score = classification_result.get("exploitability_score", 0.0)
                             impact_score = classification_result.get("impact_score", 0.0)
 
-                            # Store result in database
                             threat_classification = ThreatClassification(
                                 asset_id=None,
                                 vulnerability_id=None,
@@ -234,7 +225,6 @@ def register_agent_handlers(socketio, get_db_session):
                     finally:
                         analysis_db.close()
 
-                # Run threat analysis in a separate thread to avoid blocking the main event loop
                 Thread(target=run_threat_analysis, daemon=True).start()
 
         except Exception as e:
@@ -245,7 +235,6 @@ def register_agent_handlers(socketio, get_db_session):
 
     @socketio.on("action_result")
     def handle_action_result(data):
-        """Agent reports back on action execution result"""
         db, managed = _get_real_db_session()
         try:
             action_id = data.get("action_id")
@@ -269,26 +258,64 @@ def register_agent_handlers(socketio, get_db_session):
 
     @socketio.on("disconnect")
     def handle_disconnect():
-        """Clean up when agent disconnects"""
         db, managed = _get_real_db_session()
         try:
             for agent_id, sid in list(ACTIVE_AGENTS.items()):
                 if sid == request.sid:
                     agent = db.query(Agent).filter_by(agent_id=agent_id).first()
+                    hostname = agent_id
                     if agent:
                         agent.status = "offline"
+                        hostname = agent.hostname
                         db.commit()
                     del ACTIVE_AGENTS[agent_id]
                     leave_room(agent_id)
                     logger.info(f"Agent disconnected: {agent_id}")
+                    _schedule_offline_check(agent_id, hostname)
                     break
         except Exception as e:
             logger.error(f"Error during agent disconnect: {str(e)}")
         finally:
             db.close()
 
+
+def _status_alerts_on() -> bool:
+    return EDR_STATUS_ALERTS and alerts_enabled()
+
+def _schedule_offline_check(agent_id: str, hostname: str):
+    if _status_alerts_on():
+        _socketio.start_background_task(_alert_if_still_offline, agent_id, hostname)
+
+def _alert_if_still_offline(agent_id: str, hostname: str):
+    _socketio.sleep(OFFLINE_GRACE_SECONDS)
+    if agent_id in ACTIVE_AGENTS or agent_id in _offline_alerted:
+        return
+    _offline_alerted.add(agent_id)
+    logger.warning(f"Agent still offline after {OFFLINE_GRACE_SECONDS}s: {agent_id} ({hostname})")
+    send_alert(
+        f"EDR Sensor OFFLINE: {hostname}",
+        f"It hasnt reconnected for {OFFLINE_GRACE_SECONDS}s. The machine may be shut down or off the network, "
+        "or something stopped the agent. That machine is unprotected until it comes back.", 5, ["rotating_light"]
+    )
+
+def _announce_online(agent_id: str, hostname: str, os_type: str, is_new: bool):
+    was_alerted = agent_id in _offline_alerted
+    _offline_alerted.discard(agent_id)
+    if not _status_alerts_on():
+        return
+    if is_new:
+        title = f"New EDR Sensor: {hostname}"
+        message = f"A {os_type} agent registered for the first time (ID {agent_id[:8]}). If you didn't install it, investigate."
+        priority, tags = 4, ["new"]
+    elif was_alerted:
+        title = f"EDR Sensor back ONLINE: {hostname}"
+        message = "It reconnected, so that machine is protected again."
+        priority, tags = 3, ["white_check_mark"]
+    else:
+        return
+    _socketio.start_background_task(send_alert, title, message, priority, tags)
+
 def dispatch_action_to_agent(agent_id: str, action_type: str, action_params: dict) -> Optional[str]:
-    """Create an action for an agent and send it if online"""
     if not _get_db_session or not _socketio:
         logger.error("Agent manager not initialized. Call register_agent_handlers() first.")
         return None
@@ -308,7 +335,6 @@ def dispatch_action_to_agent(agent_id: str, action_type: str, action_params: dic
         db.add(action)
         db.commit()
 
-        # Send if agent is online
         if agent_id in ACTIVE_AGENTS:
             _socketio.emit("action_dispatch", {
                 "action_id": str(action.id),
@@ -334,7 +360,6 @@ def dispatch_action_to_agent(agent_id: str, action_type: str, action_params: dic
 
 
 def _coerce_confidence(value) -> float:
-    """Convert telemetry confidence values into a numeric float in the 0..1 range."""
     if value is None:
         return 0.0
 
@@ -361,7 +386,6 @@ def _coerce_confidence(value) -> float:
 
 
 def _build_threat_description(event: Dict, hostname: str, confidence: float) -> str:
-    """Build a human-readable log description while preserving operator context."""
     event_data = event.get("data") or event.get("event_data", {})
     confidence_value = _coerce_confidence(confidence)
 
@@ -392,7 +416,6 @@ def _build_threat_description(event: Dict, hostname: str, confidence: float) -> 
 
 
 def _build_classification_input(event: Dict, hostname: str, confidence: float) -> str:
-    """Return a classifier-safe structured description for EDR telemetry."""
     event_data = event.get("data") or event.get("event_data", {})
     confidence_value = _coerce_confidence(confidence)
     event_type = str(event.get("event_type") or "unknown").lower()
