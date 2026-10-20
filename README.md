@@ -29,7 +29,7 @@ The endpoint detection side was inspired by CrowdStrike's research on machine-le
 flowchart LR
     subgraph Endpoints
         L["Vigilon Sensor<br/>Linux · psutil / auditd"]
-        W["Vigilon Sensor<br/>Windows · psutil"]
+        W["Vigilon Sensor<br/>Windows · Sysmon / psutil"]
     end
 
     subgraph Pipeline["Agent pipeline (Redis pub/sub)"]
@@ -66,7 +66,7 @@ flowchart LR
 
 - **Threat classification (Triage):** Word2Vec text embeddings combined with structured metadata features feed a Gradient Boosting classifier with probability calibration. Each model generation (v2 to v8) is kept in `data/models/threat_classifier_v*`.
 - **Quality gates:** a new model is only promoted if it meets thresholds for macro-F1, accuracy, average confidence and calibration error (ECE and Brier score). All thresholds are configurable through `THREAT_*` environment variables.
-- **Endpoint models (Sensor):** separate process and network behaviour models (Random Forest and Gradient Boosting, with SMOTE to balance the classes), trained on real benign telemetry captured with auditd plus catalogued attack behaviour.
+- **Endpoint models (Sensor):** separate process and network behaviour models (Random Forest and Gradient Boosting, with SMOTE to balance the classes). Each operating system has its **own** model set, built with shared feature-extraction code, so tuning the Windows model can never regress the Linux one. Linux benign telemetry is captured with auditd, and Windows benign telemetry with Sysmon on a FLARE-VM analysis machine. Both are combined with catalogued attack behaviour.
 - **Pattern detection (Sentinel):** an ML model over threat-sequence features detects multi-stage attacks, alongside fuzzy matching of tactic sequences.
 - **Instrumentation:** inference latency, false-positive rate and model accuracy are tracked at runtime, with OpenTelemetry counters on the agents.
 
@@ -75,6 +75,8 @@ flowchart LR
 <p align="center">
   <img src="docs/assets/edr-console.png" alt="Vigilon EDR console — live endpoint detections" width="90%">
 </p>
+
+### Linux sensor
 
 Vigilon Sensor's Linux endpoint models were validated against a live attack suite in an isolated VM, with the agent running as a production systemd service (kernel-level `auditd` collection, ML-first scoring).
 
@@ -91,7 +93,21 @@ The models are trained on ~50,000 real benign process events captured on a live 
 
 Several of these results came from debugging the **telemetry pipeline**, not the model: `auditd` hex-encodes special-character arguments (which were silently truncating payloads before they reached the model), and binaries that log under versioned or aliased names (`nc.traditional`, `socat1`, `python3.13`) had to be normalised before detection worked. In each case the fix was in how events were *captured*, not the ML.
 
-> **Honest limitations.** The 5% false-positive gate is deliberately generous — production EDRs target ~0.1%. The attack data is catalogued/synthetic rather than real malware, so the near-perfect separation reflects a clean learning dataset, not production-grade accuracy. Validation against real malware samples and the Windows sensor reaching parity are the next milestones — measuring where the system is generous matters more than hiding it.
+### Windows sensor
+
+The Windows sensor was validated live on a FLARE-VM analysis machine in an isolated host-only network. It collects process and network events from **Sysmon** and scores them with a Windows-specific model.
+
+| Metric | Result |
+|---|---|
+| Process model (held-out test set) | precision **0.96**, recall **0.99**, F1 0.97, ROC-AUC 0.9995 |
+| Live benign check (admin commands, two passes, plus normal desktop use) | **0** process alerts |
+| Live attack triggers W1–W10 (encoded PowerShell, download cradles, certutil, regsvr32, shadow-copy deletion, run-key persistence, dropped executables) | **10 / 10** flagged (scores 0.86–0.99) |
+| Network reverse shell to the analyst host (W12) | flagged live (ML **0.82**); the analyst's `kill_process` action worked from the dashboard |
+| Known weak case (W11) | missed (0.33–0.36) |
+
+Two Windows-specific problems were found and fixed along the way. First, a feature treated any path under `C:\Users\` or `C:\ProgramData\` as a "drop location", which flagged ordinary commands such as listing a user folder (0.74 → 0.13 after the fix). Second, the training data marked every attack binary as previously seen. On a live endpoint an attack is usually seen for the first time, so most attacks scored under the alert threshold until the data was corrected. Network connections to `127.0.0.1` also caused false positives and are now skipped on both sensors.
+
+> **Honest limitations.** The 5% false-positive gate is deliberately generous — production EDRs target ~0.1%. The attack data is catalogued/synthetic rather than real malware, so the near-perfect separation reflects a clean learning dataset, not production-grade accuracy. The Windows process model is trained on a smaller dataset (~900 events vs ~5,700 on Linux) and has not yet had a generalisation pass with unseen command structures. Validation against real malware samples on both operating systems is the next milestone — measuring where the system is generous matters more than hiding it.
 
 ## Tech stack
 
@@ -101,8 +117,8 @@ Several of these results came from debugging the **telemetry pipeline**, not the
 | Data | PostgreSQL + SQLAlchemy, Neo4j (attack graphs), Redis (pub/sub and heartbeats) |
 | ML | scikit-learn, gensim (Word2Vec), imbalanced-learn, NumPy, pandas, NLTK |
 | Threat intel | MITRE ATT&CK (`mitreattack-python`), Vulners CVE API, AlienVault OTX, MISP, AbuseIPDB |
-| Endpoint | psutil, Linux auditd, python-socketio client |
-| Ops | Docker, APScheduler, OpenTelemetry, Git LFS for model artifacts |
+| Endpoint | psutil, Linux auditd, Windows Sysmon (read with pywin32), python-socketio client |
+| Ops | Docker, APScheduler, OpenTelemetry, systemd and Windows Task Scheduler for the endpoint sensors |
 
 ## Getting started
 
@@ -120,7 +136,6 @@ These are local development credentials. Change them for anything that isn't loc
 ### 2. Install and configure
 
 ```bash
-git lfs install && git lfs pull        # model artifacts are stored in Git LFS
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -156,8 +171,11 @@ python -m agents.response_coordinator.response_coordinator_agent --mode listen
 # Linux (use PROCESS_COLLECTOR=auditd for kernel-level exec events; needs root)
 BACKEND_URL=http://<platform-host>:5000 python -m agents.endpoint_agent.linux_agent
 
-# Windows (PowerShell)
-$env:BACKEND_URL="http://<platform-host>:5000"; python -m agents.endpoint_agent.windows_agent
+# Windows (Administrator PowerShell; Sysmon must be installed and running)
+pip install -r requirements-windows.txt
+$env:BACKEND_URL="http://<platform-host>:5000"
+$env:PROCESS_COLLECTOR="sysmon"     # read Sysmon events ("polling" falls back to psutil)
+python -m agents.endpoint_agent.windows_agent
 ```
 
 Upload any file from `test-upload-logs/` in the dashboard to watch the full pipeline run.
@@ -177,7 +195,7 @@ All configuration comes from environment variables (`.env`). Secrets never live 
 | Threat intel | `VULNERS_API_KEY`, `OTX_API_KEY`, `MISP_API_URL`, `MISP_API_KEY`, `ABUSEDB_API_KEY`, `CVE_MIN_YEAR` |
 | Notifications | `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SLACK_ENABLED`, `SLACK_WEBHOOK_URL`, `TEAMS_ENABLED`, `TEAMS_WEBHOOK_URL` |
 | Models | `PATTERN_MODEL_PATH`, `EDR_MODEL_DIR`, `THREAT_CALIBRATION_METHOD`, `THREAT_GATE_*`, `THREAT_WINNER_*` |
-| Endpoint sensor | `BACKEND_URL`, `PROCESS_COLLECTOR` (`polling` or `auditd`), `ML_FIRST_MODE`, `TELEMETRY_POLL_INTERVAL`, `PROCESS_EVENT_MIN_SCORE` |
+| Endpoint sensor | `BACKEND_URL`, `PROCESS_COLLECTOR` (`polling`, `auditd` on Linux, `sysmon` on Windows), `EDR_MODEL_DIR` (defaults to `data/models/EDR` on Linux and `data/models/EDR/windows` on Windows), `ML_FIRST_MODE`, `ML_EVENT_MIN_SCORE`, `TELEMETRY_POLL_INTERVAL`, `PROCESS_EVENT_MIN_SCORE`, `PROCESS_EVENT_DEDUP_WINDOW_SEC` |
 | Logging | `LOG_MAX_MB`, `LOG_RETENTION_DAYS` |
 
 All threat-intel and notification integrations are optional. Each one is skipped if its key isn't set.
@@ -195,12 +213,14 @@ agents/
   ml_training/            synthetic data and performance monitoring
 dashboard/                Flask + Socket.IO dashboard and REST API
 data/
-  models/                 SQLAlchemy models, promotion workflow, trained model artifacts (LFS)
+  models/                 SQLAlchemy models, promotion workflow, trained model artifacts
+    EDR/                  endpoint models: Linux (root and linux/), Windows (windows/)
   training/EDR/           endpoint telemetry datasets
   mitre/                  MITRE ATT&CK enterprise dataset
 shared/                   Redis message bus, agent names, rotating log config
 vulnerability_enrichment/ CVE fetcher and scheduler
 scripts/                  training, retraining, evaluation and dataset tooling
+deploy/edr/               sensor installers: systemd service (Linux), scheduled task (Windows)
 test-upload-logs/         sample logs for demoing the pipeline
 ```
 

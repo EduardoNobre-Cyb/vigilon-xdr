@@ -1,5 +1,5 @@
 param(
-    [string]$SourceDir = (Resolver-Path "$PSScriptRoot\..\..\..").Path,
+    [string]$SourceDir = (Resolve-Path "$PSScriptRoot\..\..\..").Path,
     [string]$BackendUrl = "http://192.168.56.1:5000",
     [string]$Python = "",
     [string]$SysmonDir = "C:\Sysmon"
@@ -11,23 +11,29 @@ $DataDir = "C:\ProgramData\Vigilon EDR"
 $LogDir = "$DataDir\logs"
 $EnvFile = "$DataDir\agent.env"
 $TaskName = "Vigilon EDR Sensor"
-$ModelSource = "$SourceDir\Project\threat-defense-system\agents\model"
+$ModelSource = "$SourceDir\data\models\EDR\windows"
 
 $me = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw "Run this from an Administrator PowerShell session."
 }
 if (-not (Test-Path "$SourceDir\agents\endpoint_agent\windows_agent.py")) {
-    throw "Can't find the Windows model in $ModelSource. Train it first."
+    throw "Can't find the Windows agent in $SourceDir\agents\endpoint_agent."
+}
+if (-not (Test-Path "$ModelSource\process_model.pkl")) {
+    throw "Can't find the Windows models in $SourceDir\data\models\EDR\windows. Train them first"
 }
 if (-not $Python) {
+    $Python = (Get-Command python -ErrorAction Stop).Source
+}
+if ($Python -like "*\WindowsApps\*") {
     throw "$Python is the Microsoft Store shortcut, which SYSTEM can't run. Install Python from python.org, or pass -Python C:\path\to\python.exe"
 }
 Write-Host "Using Python: $Python"
 
 $sysmon = Get-Service -Name Sysmon64, Sysmon -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($sysmon) {
-    Write-Host "Sysmon is already instaled ($($sysmon.Name))."
+    Write-Host "Sysmon is already installed ($($sysmon.Name))."
     if ($sysmon.Status -ne "Running") { Start-Service -Name $sysmon.Name }
 } else {
     New-Item -ItemType Directory -Force -Path $SysmonDir | Out-Null
@@ -35,12 +41,12 @@ if ($sysmon) {
     $sysmonConfig = "$SysmonDir\sysmonconfig.xml"
     try {
         if (-not (Test-Path $sysmonExe)) {
-            Write-Host "Donwloading Sysmon from Microsoft..."
+            Write-Host "Downloading Sysmon from Microsoft..."
             Invoke-WebRequest -Uri "https://download.sysinternals.com/files/Sysmon.zip" -OutFile "$SysmonDir\Sysmon.zip" -UseBasicParsing
-            Expand_archive -Path "$SysmonDir\Sysmon.zip" -DestinationPath $SysmonDir -Force
+            Expand-archive -Path "$SysmonDir\Sysmon.zip" -DestinationPath $SysmonDir -Force
         }
         if (-not (Test-Path $sysmonConfig)) {
-            Write-Host "Donwloading the Sysmon config..."
+            Write-Host "Downloading the Sysmon config..."
             Invoke-WebRequest -Uri "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml" -OutFile $sysmonConfig -UseBasicParsing
         }
     } catch {
@@ -88,9 +94,9 @@ Get-Content "$EnvFile" | Where-Object { `$_ -match '^\s*[^#\s][^=]*=' } | ForEac
     [Environment]::SetEnvironmentVariable(`$name.Trim(), `$value.Trim(), "Process")
 }
 `$env:PYTHONPATH = "$installDir;$InstallDir\agents"
-`$env:PYTHONNUNBUFFERED = "1"
+`$env:PYTHONUNBUFFERED = "1"
 Set-Location "$InstallDir"
-whie (`$true) {
+while (`$true) {
     # Keep one old log so agent.log can't fill the disk
     if ((Test-Path "$LogDir\agent.log") -and ((Get-Item "$LogDir\agent.log").Length -gt 10MB)) {
         Move-Item -Force "$LogDir\agent.log" "$LogDir\agent.log.1"

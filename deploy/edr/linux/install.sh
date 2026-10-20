@@ -68,7 +68,7 @@ UNIT
 chmod 644 "$UNIT_FILE"
 echo "Wrote $UNIT_FILE"
 
-if grep -q '^PROCESS_COLLECT=auditd' "$ENV_FILE"; then
+if grep -q '^PROCESS_COLLECTOR=auditd' "$ENV_FILE"; then
     if ! command -v augenrules >/dev/null; then
         echo "auditd is not installed. Installing it..."
         if ! (apt-get update -qq && apt-get install -y auditd); then
