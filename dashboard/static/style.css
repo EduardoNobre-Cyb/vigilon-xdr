@@ -784,27 +784,32 @@ body {
 
       .edr-table th:nth-child(1),
       .edr-table td:nth-child(1) {
-        width: 16%;
+        width: 14%;
       }
 
       .edr-table th:nth-child(2),
       .edr-table td:nth-child(2) {
-        width: 17%;
+        width: 12%;
       }
 
       .edr-table th:nth-child(3),
       .edr-table td:nth-child(3) {
-        width: 15%;
+        width: 9%;
       }
 
       .edr-table th:nth-child(4),
       .edr-table td:nth-child(4) {
-        width: 19%;
+        width: 17%;
       }
 
       .edr-table th:nth-child(5),
       .edr-table td:nth-child(5) {
-        width: 33%;
+        width: 22%;
+      }
+
+      .edr-table th:nth-child(6),
+      .edr-table td:nth-child(6) {
+        width: 26%;
       }
 
       .edr-table td small {

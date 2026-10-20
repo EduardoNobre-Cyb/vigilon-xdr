@@ -97,3 +97,7 @@ docker-compose.yml
 # Runtime models used by Sensor and Sentinel
 !data/models/EDR/*.pkl
 !data/models/threat_hunter.pkl
+!data/models/EDR/windows/
+!data/models/EDR/windows/*.pkl
+!data/models/EDR/linux/
+!data/models/EDR/linux/*.pkl

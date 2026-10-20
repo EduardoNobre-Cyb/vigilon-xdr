@@ -1,5 +1,3 @@
-// Moved out of templates/dashboard.html (was an inline <script>). Loaded as a classic
-// script so its functions stay global for the onclick="..." handlers.
 function fetchAgentStatus() {
   authFetch("/api/agents/status")
     .then((response) => response.json())
@@ -16,7 +14,6 @@ function fetchAgentStatus() {
         const statusText = agent.status;
 
         let heartbeatHTML = "";
-        // API sends the text "No heartbeat detected" when there is none, so check it's a real date
         const hbDate = agent.last_heartbeat ? new Date(agent.last_heartbeat) : null;
         if (hbDate && !isNaN(hbDate)) {
           const hbTime = hbDate.toLocaleTimeString();
@@ -53,7 +50,6 @@ function fetchAgentStatus() {
         `;
         container.appendChild(card);
 
-        // Fetch pending models for Vigilon Triage (classifier) and Vigilon Sentinel (hunter)
         if (agent.id === "classifier_001" || agent.id === "hunter_001") {
           fetchPendingModelsForAgent(agent.id);
         }
@@ -66,12 +62,10 @@ function fetchAgentStatus() {
     });
 }
 
-// Initial fetch + repeat every 5 seconds
 fetchAgentStatus();
 setInterval(fetchAgentStatus, 5000);
 
 async function agentAction(agentId, action) {
-    // Disable the button immediatly to prevent double-clicks
     event.target.disabled = true;
     event.target.textContent = action === 'start' ? "Starting..." : "Stopping...";
 
@@ -684,7 +678,7 @@ function renderDetectionPage(page) {
   if (nextBtn) nextBtn.disabled = currentDetectionPage >= totalPages;
 
   if (!pageItems || pageItems.length === 0) {
-    document.getElementById("detection-tbody").innerHTML = '<tr class="loading-row"><td colspan="5">No high-confidence detections</td></tr>';
+    document.getElementById("detection-tbody").innerHTML = '<tr class="loading-row"><td colspan="6">No high-confidence detections</td></tr>';
     return;
   }
 
@@ -700,6 +694,11 @@ function renderDetectionPage(page) {
     const eventTypeShort = eventTypeRaw === "process" ? "P" : eventTypeRaw === "network" ? "N" : "?";
     const eventTypeTitle = eventTypeRaw || "unknown";
 
+    const cls = d.classification;
+    const classificationLabel = cls
+      ? `${cls.threat_type || "Needs Review"}<br><small style="color:#888;">${cls.severity || "-"} · risk ${cls.risk_score}${cls.mitre_tactic ? ` · ${cls.mitre_tactic}` : ""}</small>`
+      : '<small style="color:#888;">Not classified</small>';
+
     return `
         <tr>
           <td>${d.hostname}</td>
@@ -709,6 +708,7 @@ function renderDetectionPage(page) {
           </td>
           <td>${time}</td>
           <td>${detailsLabel}<br><small style="color:#888;">${sourceLabel}</small></td>
+          <td>${classificationLabel}</td>
         </tr>
     `;
   }).join("");
@@ -829,7 +829,7 @@ async function selectEDRAgent(agentId) {
   document.getElementById("edr-actions-subtitle").textContent = `${selectedAgent.hostname} • ${selectedAgent.os_type} • latest telemetry and response options`;
 
   try {
-    const response = await authFetch(`/api/edr-agents/${agentId}/telemetry?limit=12`);
+    const response = await authFetch(`/api/edr-agents/${agentId}/telemetry?limit=50`);
     if (!response.ok) throw new Error(`API Error: ${response.status}`);
 
     const telemetry = await response.json();
@@ -937,7 +937,7 @@ function renderTelemetryPickerCard(agent, event, eventIndex, isSelected = false)
   const detail = payload.process_name || payload.name || payload.file_path || payload.remote_ip || payload.destination_ip || payload.ip || "No key details";
   const time = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : "-";
   const severity = event.severity || "info";
-  const confidence = payload.confidence || payload.malware_confidence || payload.network_risk_score;
+  const confidence = event.malware_confidence ?? event.network_risk_score ?? payload.confidence ?? payload.malware_confidence ?? payload.ml_score;
   const confidenceLabel = confidence !== undefined && confidence !== null ? `${Math.round(Number(confidence) * 100)}%` : "n/a";
 
   return `
@@ -999,7 +999,7 @@ function renderTelemetryDetailPanel(event, agentId, eventIndex = 0) {
   const detail = payload.process_name || payload.name || payload.file_path || payload.remote_ip || payload.destination_ip || payload.ip || "No key details";
   const timestamp = event.timestamp ? new Date(event.timestamp).toLocaleString() : "-";
   const severity = event.severity || "info";
-  const confidence = payload.confidence || payload.malware_confidence || payload.network_risk_score;
+  const confidence = event.malware_confidence ?? event.network_risk_score ?? payload.confidence ?? payload.malware_confidence ?? payload.ml_score;
   const confidenceLabel = confidence !== undefined && confidence !== null ? `${Math.round(Number(confidence) * 100)}%` : "n/a";
 
   return `

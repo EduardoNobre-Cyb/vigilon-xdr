@@ -8,6 +8,7 @@ import signal
 import socket
 import hashlib
 import platform
+import ipaddress
 import logging
 import threading
 from urllib.parse import urlparse
@@ -288,6 +289,21 @@ class NetworkMonitor:
 
         return False
 
+    @staticmethod
+    def _is_loopback(ip: str) -> bool:
+        try:
+            addr = ipaddress.ip_address(ip.split("%")[0])
+        except ValueError:
+            return False
+
+        if addr.version == 6 and addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
+        return addr.is_loopback
+
+    def _is_loopback_abuse(self, event_data: Dict) -> bool:
+        features = self.ml_manager.network_extractor.extract_features(event_data)
+        return (features["is_c2_port"] == 1.0 and features["suspicious_process_connects"] == 1.0)
+
     def score_network_risk(self, process_name: str, dst_port: int) -> float:
         """Lightweight heuristic confidence for suspicious outbound connections."""
         name = (process_name or "").lower()
@@ -351,6 +367,20 @@ class NetworkMonitor:
                     emitted_score = ml_score if ML_FIRST_MODE else risk_score
                     emitted_candidate = ml_candidate if ML_FIRST_MODE else heuristic_candidate
 
+                    loopback = self._is_loopback(dst_ip)
+                    loopback_suppressed = loopback and not self._is_loopback_abuse(ml_event_data)
+                    if loopback_suppressed:
+                        if emitted_candidate:
+                            logger.info(
+                                "Loopback connection recorded, not alerted: %s → %s:%s ml_score=%.2f",
+                                process_name,
+                                dst_ip,
+                                dst_port,
+                                ml_score,
+                            )
+                        emitted_score = 0.0
+                        emitted_candidate = False
+
                     event = {
                         "event_type": "network",
                         "event_subtype": "connection_established",
@@ -368,6 +398,8 @@ class NetworkMonitor:
                             "heuristic_candidate": heuristic_candidate,
                             "ml_score": ml_score,
                             "ml_candidate": ml_candidate,
+                            "loopback": loopback,
+                            "loopback_suppressed": loopback_suppressed,
                         }
                     }
                     events.append(event)

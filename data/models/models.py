@@ -1,4 +1,3 @@
-# SQLAlchemy models for Threat Defense System
 from sqlalchemy import (
     Column,
     Integer,
@@ -22,7 +21,7 @@ from datetime import datetime, timezone
 import os
 from dotenv import load_dotenv
 
-load_dotenv()  # reads .env file into os.environ
+load_dotenv()
 
 Base = declarative_base()
 
@@ -152,6 +151,9 @@ class ThreatClassification(Base):
     risk_score = Column(Float)
     mitre_tactic = Column(String)
     severity = Column(String)
+
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    telemetry_event_id = Column(UUID(as_uuid=True), ForeignKey("telemetry_events.id", ondelete="SET NULL"), nullable=True, index=True)
 
     ensemble_confidence = Column(
         Float

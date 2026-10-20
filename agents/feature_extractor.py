@@ -18,7 +18,8 @@ class ProcessFeatureExtractor:
             "psexec.exe", "wmic", "wmic.exe", "rundll32",
             "rundll32.exe", "regsvcs", "certutil", "certutil.exe", "cscript", "cscript.exe",
             "wscript", "wscript.exe", "mshta", "mshta.exe", "schtasks", "sc", "taskkill",
-            "reg", "whoami", "nc", "ncat", "netcat", "sh", "bash", "dash", "zsh", "perl", "gawk", "awk", "find", "socat", "php"
+            "reg", "whoami", "nc", "ncat", "netcat", "sh", "bash", "dash", "zsh", "perl", "gawk", "awk", "find", "socat", "php",
+            "pwsh", "regsvr32", "bitsadmin", "vssadmin", "bcdedit", "wevtutil"
         }
 
         # Known benign parent processes
@@ -34,17 +35,18 @@ class ProcessFeatureExtractor:
         }
 
         self.suspicious_dirs = {
-            "c:\\temp", "c:\\users\\", "c:\\programdata",
-            "c:\\appdata", "c:\\windows\\temp", "/tmp",
-            "/var/tmp", "/dev/shm", "/run/user/"
+            "c:\\temp", "c:\\users\\public\\", "c:\\windows\\temp\\", "\\appdata\\local\\temp\\",
+            "\\downloads\\",  "/tmp", "/var/tmp", "/dev/shm", "/run/user/"
         }
 
+        self.programdata_root_file = re.compile(
+            r"c:\\programdata\\[^\\/\s\"',]+\.(exe|dll|ps1|bat|cmd|vbs|js|hta|scr)"
+        )
+
     def extract_features(self, event: Dict) -> Dict[str, float]:
-        """Extract feature vetor from process event"""
 
         features = {}
 
-        # Process name features
         proc_name = event.get("name", "").lower()
         name_aliases = {
             "nc.traditional": "nc",
@@ -53,41 +55,46 @@ class ProcessFeatureExtractor:
         }
         proc_name = name_aliases.get(proc_name, proc_name)
         proc_name = self._strip_version(proc_name)
+        if proc_name.endswith(".exe"):
+            proc_name = proc_name[:-4]
         features["is_suspicious_process"] = 1.0 if proc_name in self.suspicious_processes else 0.0
         features["process_name_length"] = min(len(proc_name) / 50, 1.0)
-        # Normalize
 
-        # Command line features
         cmdline = event.get("command_line", "").lower()
         features["cmdline_length"] = min(len(cmdline) / 1000, 1.0)
         features["cmdline_entropy"] = self._calculate_entropy(cmdline)
 
-        # Suspicious keywords count
-        keywords = ["powershell", "cmd", "-enc", "execute", "bypass", "hidden", "obf", "base64", "curl", "wget", "| bash", "| sh", "/dev/tcp/", "nc -e", "nc -vz", "ncat", "chmod +s", "/dev/shm", "-qo-", "system(", "pty.spawn", "-exec /bin/sh", "-exec /bin/bash", "fsockopen", "tcp-connect:", "exec:/bin/", "sh -i", "socket.socket"]
+        keywords = [
+            "powershell", "cmd", "-enc", "execute", "bypass", "hidden", "obf", "base64", 
+            "curl", "wget", "| bash", "| sh", "/dev/tcp/", "nc -e", "nc -vz", "ncat", 
+            "chmod +s", "/dev/shm", "-qo-", "system(", "pty.spawn", "-exec /bin/sh", 
+            "-exec /bin/bash", "fsockopen", "tcp-connect:", "exec:/bin/", "sh -i", "socket.socket",
+            "-nop", "-noni", "-w hidden", "-windowstyle hidden", "-encodedcommand",
+            "frombase64string", "downloadstring2", "downloadfile", "invoke-expression",
+            "iex(", "iex (", "| iex", "-urlcache", "scrobj.dll", "/transfer", "process call create",
+            "delete shadows", "shadowcopy delete", "recoveryenabled no", "\\currentversion\\run", "/sc onlogon",
+            "/sc onstart", " /add", " -decode ", ".hta", ".sct", "mshta", "vssadmin", "localgroup administrators"]
         keyword_count = sum(1 for kw in keywords if kw in cmdline)
         features["suspicious_keywords_count"] = min(keyword_count / 5, 1.0)
 
-        # Path features
         path = event.get("path", "").lower()
         path_and_cmd = f"{path} {cmdline}"
-        features["execution_in_temp"] = 1.0 if any(d in path_and_cmd for d in self.suspicious_dirs) else 0.0
+        in_drop_dir = any(d in path_and_cmd for d in self.suspicious_dirs)
+        in_programdata_root = self.programdata_root_file.search(path_and_cmd) is not None
+        features["execution_in_temp"] = 1.0 if in_drop_dir or in_programdata_root else 0.0
         features["execution_in_system"] = 1.0 if any(d in path for d in self.system_dirs) else 0.0
 
-        # Parent process features
         parent_name = event.get("parent_name", "").lower()
         features["is_benign_parent"] = 1.0 if parent_name in self.benign_parents else 0.0
         features["parent_is_system_process"] = 1.0 if parent_name in {"services.exe", "csrss.exe"} else 0.0
 
-        # User/Elevation features
         user = event.get("user", "").upper()
         features["is_elevated"] = 1.0 if user in {"SYSTEM", "NT AUTHORITY\\SYSTEM"} else 0.0
         features["is_admin"] = 1.0 if "ADMIN" in user or "Administrator" in user else 0.0
 
-        # Temporal features
         features["is_first_seen"] = float(event.get("is_first_seen", False))
 
-        # Filename features
-        filename = self._strip_version(os.path.basename(path))
+        filename = self._strip_version(path.replace("\\", "/").rsplit("/", 1)[-1])
         features["filename_length"] = min(len(filename) / 100, 1.0)
         features["has_long_extension"] = 1.0 if filename.count(".") > 1 else 0.0
 
@@ -98,33 +105,29 @@ class ProcessFeatureExtractor:
         return match.group(1) if match else name
     
     def _calculate_entropy(self, text: str) -> float:
-        """Calculate Shannon entropy of text [0-1]"""
         if not text:
             return 0.0
         
-        # Count character frequencies
         frequencies = {}
         for char in text:
             frequencies[char] = frequencies.get(char, 0) + 1
 
-        # Calcuate entropy
         entropy = 0.0
         for freq in frequencies.values():
             p = freq / len(text)
             entropy -= p * math.log2(p)
 
-        # Normalize to [0, 1]
         max_entropy = math.log2(len(set(text))) if len(set(text)) > 0 else 1
         return entropy / max_entropy if max_entropy > 0 else 0.0
 
 class NetworkFeatureExtractor:
-    """Extract features from network connection events"""
+
 
     def __init__(self):
         self.c2_ports = {
             4444, 5555, 8888, 9999, 31337, 12345,
-            6667, 6666, # IRC
-            1433, 3306, # Databases
+            6667, 6666,
+            1433, 3306,
         }
 
         self.suspicious_destinations = {

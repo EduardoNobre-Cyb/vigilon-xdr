@@ -15,7 +15,7 @@ AUDIT_RULES=/etc/audit/rules.d/vigilon-edr.rules
 AGENT_SCRIPT="$AGENT_DIR/agents/endpoint_agent/linux_agent.py"
 
 if [[ ! -f "$AGENT_SCRIPT" ]]; then
-    echo "Can't ffind $AGENT_SCRIPT. Pass the project folder as the first argument." >&2
+    echo "Can't find $AGENT_SCRIPT. Pass the project folder as the first argument." >&2
     exit 1
 fi
 if [[ ! -x "$PYTHON" ]]; then
@@ -28,11 +28,12 @@ if [[ ! -f "$ENV_FILE" ]]; then
     cat > "$ENV_FILE" <<CONF
 # Vigilon EDR agent settings. After editing: sudo systemctl restart vigilon-edr
 BACKEND_URL=http://192.168.56.1:5000
-EDR_MODEL_DIR=$AGENT_DIR/data/models/EDR
+EDR_MODEL_DIR=$AGENT_DIR/data/models/EDR/linux
 PROCESS_COLLECTOR=auditd
 ML_FIRST_MODE=true
 ML_EVENT_MIN_SCORE=0.70
 TELEMETRY_POLL_INTERVAL=0.25
+AUTO_RESPONSE_MODE=dry_run
 CONF
     chmod 600 "$ENV_FILE"
     echo "Created $ENV_FILE"
@@ -43,7 +44,7 @@ fi
 cat > "$UNIT_FILE" <<UNIT
 [Unit]
 Description=Vigilon EDR Sensor
-Wants=network-online.target
+Wants=network-online.target auditd.service
 After=network-online.target vboxadd-service.service auditd.service
 # Never give up restarting (the default stops after 5 quick failures)
 StartLimitIntervalSec=0
@@ -54,7 +55,7 @@ EnvironmentFile=$ENV_FILE
 Environment=PYTHONPATH=$AGENT_DIR
 Environment=PYTHONUNBUFFERED=1
 # At boot the VirtualBox shared folder can mount after this service starts.
-# Iff the code isn't there yet check fails, and Restart= tries again 10s later.
+# If the code isn't there yet check fails, and Restart= tries again 10s later.
 ExecStartPre=/usr/bin/test -f $AGENT_SCRIPT
 ExecStart=$PYTHON $AGENT_SCRIPT
 Restart=always
@@ -68,13 +69,17 @@ chmod 644 "$UNIT_FILE"
 echo "Wrote $UNIT_FILE"
 
 if grep -q '^PROCESS_COLLECT=auditd' "$ENV_FILE"; then
-    if command -v augenrules >/dev/null; then
-        echo "-a always,exit -F arch=b64 -S execve -k edr_process_exec" > "$AUDIT_RULES"
-        augenrules --load
-        echo "Installed audit rule $AUDIT_RULES"
-    else
-        echo "WARNING: PROCESS_COLLECTOR=auditd but auditd isn't installed (sudo apt install auditd)." >&2
+    if ! command -v augenrules >/dev/null; then
+        echo "auditd is not installed. Installing it..."
+        if ! (apt-get update -qq && apt-get install -y auditd); then
+            echo "Failed to install auditd. Please install it manually (sudo apt install auditd)." >&2
+            exit 1
+        fi
     fi
+    systemctl enable --now auditd
+    echo "-a always,exit -F arch=b64 -S execve -k edr_process_exec" > "$AUDIT_RULES"
+    augenrules --load
+    echo "Installed audit rule $AUDIT_RULES"  
 else
     rm -f "$AUDIT_RULES"
 fi

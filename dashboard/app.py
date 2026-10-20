@@ -74,10 +74,11 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 def _classification_origin(classification) -> str:
-    """Infer whether a threat came from legacy log ingestion or EDR telemetry."""
     if getattr(classification, "asset_id", None) is None and getattr(
         classification, "vulnerability_id", None
     ) is None:
+        return "edr_telemetry"
+    if getattr(classification, "telemetry_event_id", None) is not None:
         return "edr_telemetry"
     return "log_ingestion"
 
@@ -121,10 +122,9 @@ jwt = JWTManager(app)
 
 AGENT_BASE_DIR = Path(__file__).resolve().parent.parent
 
-PID_DIR = AGENT_BASE_DIR / "pids"  # Directory to store PID files for agents
-PID_DIR.mkdir(exist_ok=True)  # Create PID directory if it doenst exist
+PID_DIR = AGENT_BASE_DIR / "pids"
+PID_DIR.mkdir(exist_ok=True)
 
-# Maps agent_id to the python command to launch it
 AGENT_COMMANDS = {
     "threat_model_001": [
         sys.executable,
@@ -156,6 +156,9 @@ AGENT_COMMANDS = {
     ],
 }
 
+EDR_THREAT_SCORE = 0.90
+EDR_SUSPICIOUS_SCORE = 0.70
+EDR_INFORMATIONAL_SCORE = 0.45
 
 # Any logged-in analyst
 def login_required(f):
@@ -947,7 +950,6 @@ def deploy_model(model_id):
 @app.route("/api/edr-agents", methods=["GET"])
 @login_required
 def get_edr_agents():
-    """Get list of all EDR endpoint agents (Windows/Linux)"""
     session = get_session()
 
     agents = session.query(Agent).all()
@@ -986,33 +988,88 @@ def get_edr_agents():
     
     return jsonify(response), 200
 
+def _edr_event_score(event):
+    data= event.event_data if isinstance(event.event_data, dict) else {}
+    for value in (event.malware_confidence, event.network_risk_score, data.get("ml_score")):
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return 0.0
+
+def _edr_event_severity(event):
+    severity = (event.severity or "info").lower()
+    score = _edr_event_score(event)
+    data = event.event_data if isinstance(event.event_data, dict) else {}
+
+    if severity == "critical" or score >= EDR_THREAT_SCORE:
+        return "Threat"
+    if severity == "warning" or score >= EDR_SUSPICIOUS_SCORE:
+        return "Suspicious"
+    if score >= EDR_INFORMATIONAL_SCORE or data.get("is_first_seen"):
+        return "Informational"
+    return "Telemetry"
+
 @app.route("/api/edr-agents/<agent_id>/telemetry", methods=["GET"])
 @login_required
 def get_edr_agent_telemetry(agent_id):
-    """Get recent telemetry from EDR endpoint agent"""
     session = get_session()
 
-    limit = request.args.get("limit", 100, type=int)
-    event_type = request.args.get("event_type", None) # "process", "network", "file"
+    limit = request.args.get("limit", 50, type=int)
+    os_type = request.args.get("os_type", None) 
+    min_confidence = request.args.get("min_confidence", 0.7, type=float)
 
-    agent = session.query(Agent).filter_by(agent_id=agent_id).first()
-    if not agent:
-        return jsonify({"error": "EDR agent not found"}), 404
-    
-    query = session.query(TelemetryEvent).filter_by(agent_id=agent.id)
-    if event_type:
-        query = query.filter_by(event_type=event_type)
+    query = session.query(TelemetryEvent).join(Agent)
 
-    events = query.order_by(TelemetryEvent.timestamp.desc()).limit(limit).all()
+    if os_type:
+        query = query.filter(Agent.os_type == os_type)
 
-    return jsonify([{
-        "id": str(event.id),
-        "event_type": event.event_type,
-        "event_subtype": event.event_subtype,
-        "timestamp": event.timestamp.isoformat(),
-        "severity": event.severity,
-        "data": event.event_data, # Simply json string
-    } for event in events ])
+    events = query.order_by(TelemetryEvent.timestamp.desc()).all()
+
+    matched = []
+    for event in events:
+        confidence = _telemetry_confidence(event)
+        if confidence >= min_confidence:
+            matched.append((event, confidence))
+    matched = matched[:limit]
+
+    event_ids = [event.id for event, _ in matched]
+    classification_by_event = {}
+    if event_ids:
+        linked = (
+            session.query(ThreatClassification)
+            .filter(ThreatClassification.telemetry_event_id.in_(event_ids))
+            .order_by(ThreatClassification.id.desc())
+            .all()
+        )
+
+    results = []
+    for event, confidence in matched:
+        classification = classification_by_event.get(event.id)
+        results.append({
+            "id": str(event.id),
+            "agent_id": event.agent.agent_id,
+            "hostname": event.agent.hostname,
+            "os_type": event.agent.os_type,
+            "event_type": event.event_type,
+            "event_subtype": event.event_subtype,
+            "severity": event.severity,
+            "timestamp": event.timestamp.isoformat(),
+            "confidence": confidence,
+            "source": "edr_telemetry",
+            "data": event.event_data,
+            "classification": {
+                "id": classification.id,
+                "threat_type": classification.threat_type,
+                "severity": classification.severity,
+                "risk_score": round(classification.risk_score or 0, 2),
+                "mitre_tactic": classification.mitre_tactic,
+            } if classification else None,
+        })
+
+    return jsonify(results)
 
 @app.route("/api/edr-agents/<agent_id>/actions", methods=["POST"])
 @login_required

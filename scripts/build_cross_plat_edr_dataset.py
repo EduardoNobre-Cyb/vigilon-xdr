@@ -1,10 +1,12 @@
 import json
 import random
+import os
 from pathlib import Path
 
 
 RAW_DIR = Path("data/training/EDR/raw")
 OUT_DIR = Path("data/training/EDR/prepared")
+BUILD_SEED = int(os.getenv("EDR_BUILD_SEEN", "42"))
 
 
 def read_jsonl(path: Path):
@@ -49,6 +51,7 @@ def shuffle_and_write(path: Path, records):
         json.dump(records, f, indent=2)
 
 def main():
+    random.seed(BUILD_SEED)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     process_linux = [normalize_process(x) for x in read_jsonl(RAW_DIR / "process_linux.jsonl")]
@@ -59,6 +62,9 @@ def main():
     process_events = process_linux + process_windows
     network_events = network_linux + network_windows
 
+    shuffle_and_write(OUT_DIR / "process_events_linux.json", list(process_linux))
+    shuffle_and_write(OUT_DIR / "process_events_windows.json", list(process_windows))
+
     shuffle_and_write(OUT_DIR / "process_events.json", process_events)
     shuffle_and_write(OUT_DIR / "network_events.json", network_events)
 
@@ -66,10 +72,15 @@ def main():
     print(f"  process_events.json: {len(process_events)}")
     print(f"  network_events.json: {len(network_events)}")
 
-    proc_pos = sum(1 for e in process_events if e["label"] == 1)
-    net_pos = sum(1 for e in network_events if e["label"] == 1)
-    print(f"  process positives: {proc_pos}, negatives: {len(process_events) - proc_pos}")
-    print(f"  network positives: {net_pos}, negatives: {len(network_events) - net_pos}")
+    def summarize(name, events):
+        positives = sum(1 for e in events if e["label"] == 1)
+        print(f"  {name}: {len(events)} (positives: {positives}, negatives: {len(events) - positives})")
+
+    print("Dataset summary:")
+    summarize("process_events_linux.json", process_linux)
+    summarize("process_events_windows.json", process_windows)
+    summarize("process_events.json (combined)", process_events)
+    summarize("network_events.json (shared)", network_events)
 
 
 if __name__ == "__main__":

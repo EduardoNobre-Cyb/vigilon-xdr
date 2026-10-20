@@ -126,25 +126,24 @@ def register_agent_handlers(socketio, get_db_session):
             if not agent:
                 emit("error", {"message": f"Unknown Agent: {agent_id}"})
                 return
-        
+
             agent.last_heartbeat = datetime.now(timezone.utc)
+
+            agent_row_id = agent.id
+            hostname = agent.hostname
+            stored_events = []
 
             for event in events:
                 try:
                     event_data = event.get("data") or event.get("event_data", {})
 
-                    malware_confidence = _coerce_confidence(
-                        event.get("malware_confidence")
-                        if event.get("malware_confidence") is not None
-                        else event.get("network_risk_score")
-                    )
-                    network_risk_score = _coerce_confidence(
-                        event.get("network_risk_score")
-                        if event.get("network_risk_score") is not None
-                        else event.get("malware_confidence")
-                    )
+                    malware_confidence = _coerce_confidence(event.get("malware_confidence") if event.get("malware_confidence") is not None else event.get("network_risk_score"))
+                    network_risk_score = _coerce_confidence(event.get("network_risk_score") if event.get("network_risk_score") is not None else event.get("malware_confidence"))
+
+                    telemetry_id = uuid.uuid4()
 
                     telemetry = TelemetryEvent(
+                        id=telemetry_id,
                         agent_id=agent.id,
                         event_type=event.get("event_type"),
                         event_subtype=event.get("event_subtype"),
@@ -155,7 +154,8 @@ def register_agent_handlers(socketio, get_db_session):
                         timestamp=datetime.fromisoformat(event.get("timestamp")) if event.get("timestamp") else datetime.now(timezone.utc)
                     )
                     db.add(telemetry)
-                
+                    stored_events.append((event, telemetry_id))
+
                 except Exception as e:
                     logger.warning(f"Failed to ingest telemetry event from agent {agent_id}: {str(e)}")
                     continue
@@ -165,7 +165,7 @@ def register_agent_handlers(socketio, get_db_session):
             logger.info("Ingested %s telemetry events from %s", len(events), agent_id)
             emit("telemetry_ack", {"count": len(events)})
 
-            if events:
+            if stored_events:
                 def run_threat_analysis():
                     analysis_db, _ = _get_real_db_session()
                     try:
@@ -176,23 +176,20 @@ def register_agent_handlers(socketio, get_db_session):
                             return _coerce_confidence(value)
 
                         high_conf_events = [
-                            e for e in events
+                            (e, telemetry_id) for e, telemetry_id in stored_events
                             if (normalize_event_confidence(e) > 0.70)
                         ]
 
                         if not high_conf_events:
                             logger.info("Telemetry received from %s but no high-confidence events to classify.", agent_id)
                             return
-                        
+
                         classifier = ThreatClassificationAgent()
 
-                        for event in high_conf_events:
-                            confidence = _coerce_confidence(
-                                event.get("malware_confidence")
-                                or event.get("network_risk_score", 0)
-                            )
-                            threat_description = _build_threat_description(event, agent.hostname, confidence)
-                            classification_input = _build_classification_input(event, agent.hostname, confidence)
+                        for event, telemetry_id in high_conf_events:
+                            confidence = _coerce_confidence(event.get("malware_confidence") or event.get("network_risk_score", 0))
+                            threat_description = _build_threat_description(event, hostname, confidence)
+                            classification_input = _build_classification_input(event, hostname, confidence)
 
                             logger.info("Threat event captured for classification: %s", threat_description)
 
@@ -206,6 +203,8 @@ def register_agent_handlers(socketio, get_db_session):
                             threat_classification = ThreatClassification(
                                 asset_id=None,
                                 vulnerability_id=None,
+                                agent_id=agent_row_id,
+                                telemetry_event_id=telemetry_id,
                                 threat_type=threat_type,
                                 exploitability_score=exploitability_score,
                                 impact_score=impact_score,
@@ -213,8 +212,8 @@ def register_agent_handlers(socketio, get_db_session):
                                 mitre_tactic=classification_result.get("mitre_tactic"),
                                 severity=severity,
                                 ensemble_confidence=float(classification_result.get("confidence", confidence)),
-                                timestamp=datetime.now(timezone.utc),
-                            )
+                                timestamp=datetime.now(timezone.utc)
+                            ) 
                             analysis_db.add(threat_classification)
 
                         analysis_db.commit()
