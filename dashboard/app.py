@@ -1017,59 +1017,30 @@ def _edr_event_severity(event):
 def get_edr_agent_telemetry(agent_id):
     session = get_session()
 
-    limit = request.args.get("limit", 50, type=int)
-    os_type = request.args.get("os_type", None) 
-    min_confidence = request.args.get("min_confidence", 0.7, type=float)
+    limit = request.args.get("limit", 100, type=int)
+    event_type = request.args.get("event_type", None)
 
-    query = session.query(TelemetryEvent).join(Agent)
+    agent = session.query(Agent).filter_by(agent_id=agent_id).first()
+    if not agent:
+        return jsonify({"error": "EDR agent not found"}), 404
 
-    if os_type:
-        query = query.filter(Agent.os_type == os_type)
+    query = session.query(TelemetryEvent).filter_by(agent_id=agent.id)
+    if event_type:
+        query = query.filter_by(event_type=event_type)
 
-    events = query.order_by(TelemetryEvent.timestamp.desc()).all()
+    events = query.order_by(TelemetryEvent.timestamp.desc()).limit(limit).all()
 
-    matched = []
-    for event in events:
-        confidence = _telemetry_confidence(event)
-        if confidence >= min_confidence:
-            matched.append((event, confidence))
-    matched = matched[:limit]
-
-    event_ids = [event.id for event, _ in matched]
-    classification_by_event = {}
-    if event_ids:
-        linked = (
-            session.query(ThreatClassification)
-            .filter(ThreatClassification.telemetry_event_id.in_(event_ids))
-            .order_by(ThreatClassification.id.desc())
-            .all()
-        )
-
-    results = []
-    for event, confidence in matched:
-        classification = classification_by_event.get(event.id)
-        results.append({
-            "id": str(event.id),
-            "agent_id": event.agent.agent_id,
-            "hostname": event.agent.hostname,
-            "os_type": event.agent.os_type,
-            "event_type": event.event_type,
-            "event_subtype": event.event_subtype,
-            "severity": event.severity,
-            "timestamp": event.timestamp.isoformat(),
-            "confidence": confidence,
-            "source": "edr_telemetry",
-            "data": event.event_data,
-            "classification": {
-                "id": classification.id,
-                "threat_type": classification.threat_type,
-                "severity": classification.severity,
-                "risk_score": round(classification.risk_score or 0, 2),
-                "mitre_tactic": classification.mitre_tactic,
-            } if classification else None,
-        })
-
-    return jsonify(results)
+    return jsonify([{
+        "id": str(event.id),
+        "event_type": event.event_type,
+        "event_subtype": event.event_subtype,
+        "timestamp": event.timestamp.isoformat(),
+        "severity": event.severity,
+        "category": _edr_event_severity(event),        
+        "malware_confidence": event.malware_confidence,
+        "network_risk_score": event.network_risk_score,
+        "data": event.event_data,
+    } for event in events ])
 
 @app.route("/api/edr-agents/<agent_id>/actions", methods=["POST"])
 @login_required
@@ -1135,25 +1106,50 @@ def get_edr_detections():
     events = query.order_by(TelemetryEvent.timestamp.desc()).all()
 
     # Filter by confidence scores
-    results = []
+    matched = []
     for event in events:
         confidence = _telemetry_confidence(event)
         if confidence >= min_confidence:
-            results.append({
-                "id": str(event.id),
-                "agent_id": event.agent.agent_id,
-                "hostname": event.agent.hostname,
-                "os_type": event.agent.os_type,
-                "event_type": event.event_type,
-                "event_subtype": event.event_subtype,
-                "severity": event.severity,
-                "timestamp": event.timestamp.isoformat(),
-                "confidence": confidence,
-                "source": "edr_telemetry",
-                "data": event.event_data,
-            })
+            matched.append((event, confidence))
+    matched = matched[:limit]
 
-    return jsonify(results[:limit])
+    event_ids = [event.id for event, _ in matched]
+    classification_by_event = {}
+    if event_ids:
+        linked = (
+            session.query(ThreatClassification)
+            .filter(ThreatClassification.telemetry_event_id.in_(event_ids))
+            .order_by(ThreatClassification.id.desc())
+            .all()
+        )
+        for classification in linked:
+            classification_by_event.setdefault(classification.telemetry_event_id, classification)
+
+    results = []
+    for event, confidence in matched:
+        classification = classification_by_event.get(event.id)
+        results.append({
+            "id": str(event.id),
+            "agent_id": event.agent.agent_id,
+            "hostname": event.agent.hostname,
+            "os_type": event.agent.os_type,
+            "event_type": event.event_type,
+            "event_subtype": event.event_subtype,
+            "severity": event.severity,
+            "timestamp": event.timestamp.isoformat(),
+            "confidence": confidence,
+            "source": "edr_telemetry",
+            "data": event.event_data,
+            "classification": {
+                "id": classification.id,
+                "threat_type": classification.threat_type,
+                "severity": classification.severity,
+                "risk_score": round(classification.risk_score or 0, 2),
+                "mitre_tactics": classification.mitre_tactic,
+            } if classification else None,
+        })
+
+    return jsonify(results)
 
 
 @app.route("/api/edr-agents/summary", methods=["GET"])
