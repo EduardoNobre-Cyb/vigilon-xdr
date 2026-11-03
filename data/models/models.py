@@ -154,6 +154,7 @@ class ThreatClassification(Base):
 
     agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     telemetry_event_id = Column(UUID(as_uuid=True), ForeignKey("telemetry_events.id", ondelete="SET NULL"), nullable=True, index=True)
+    telemetry_event = relationship("TelemetryEvent")
 
     ensemble_confidence = Column(
         Float

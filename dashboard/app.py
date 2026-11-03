@@ -1,5 +1,5 @@
 from flask import Flask, render_template, jsonify, Response
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, emit, join_room
 from flask_cors import CORS
 import os
 from flask import request, redirect, url_for
@@ -34,6 +34,7 @@ import redis
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
+    decode_token,
     jwt_required,
     get_jwt,
     get_jwt_identity,
@@ -98,7 +99,7 @@ def _telemetry_confidence(event) -> float:
     return float(confidence or 0)
 
 # Import agent_manager AFTER socketio is created to avoid circular import
-from agents.agent_manager import dispatch_action_to_agent, ACTIVE_AGENTS, register_agent_handlers
+from agents.agent_manager import dispatch_action_to_agent, ACTIVE_AGENTS, register_agent_handlers, DASHBOARD_ROOM
 
 # Register agent WebSocket handlers after socketio is initialized
 register_agent_handlers(socketio, get_db_session)
@@ -119,6 +120,17 @@ app.config["JWT_QUERY_STRING_NAME"] = "token"
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # Max upload size: 16MB
 
 jwt = JWTManager(app)
+
+@socketio.on("dashboard_subscribe")
+def handle_dashboard_subscribe(data):
+    token = (data or {}).get("token")
+    try:
+        decode_token(token)
+    except Exception:
+        emit("dashboard_subscribe_error", {"message": "Invalid or expired token"})
+        return
+    join_room(DASHBOARD_ROOM)
+    emit("dashboard_subscribed", {"room": DASHBOARD_ROOM})
 
 AGENT_BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -1080,7 +1092,7 @@ def get_edr_agent_actions(agent_id):
     return jsonify([{
         "id": str(action.id),
         "action_type": action.action_type,
-        "status": action.status, # "pending", "sent", "executed", "failed"
+        "status": action.status,
         "created_at": action.created_at.isoformat(),
         "sent_at": action.sent_at.isoformat() if action.sent_at else None,
         "executed_at": action.executed_at.isoformat() if action.executed_at else None,
@@ -1090,66 +1102,68 @@ def get_edr_agent_actions(agent_id):
 @app.route("/api/edr-agents/detections", methods=["GET"])
 @login_required
 def get_edr_detections():
-    """Get high-conffidence detections for analyst review queue"""
     session = get_session()
-    
-    limit = request.args.get("limit", 50, type=int)
-    os_type = request.args.get("os_type", None) # "windows", "linux"
-    min_confidence = request.args.get("min_confidence", 0.7, type=float)
 
-    # Get events from agents
-    query = session.query(TelemetryEvent).join(Agent)
+    try:
+        limit = request.args.get("limit", 50, type=int)
+        os_type = request.args.get("os_type", None)
+        min_confidence = request.args.get("min_confidence", 0.7, type=float)
 
-    if os_type:
-        query = query.filter(Agent.os_type == os_type)
-
-    events = query.order_by(TelemetryEvent.timestamp.desc()).all()
-
-    # Filter by confidence scores
-    matched = []
-    for event in events:
-        confidence = _telemetry_confidence(event)
-        if confidence >= min_confidence:
-            matched.append((event, confidence))
-    matched = matched[:limit]
-
-    event_ids = [event.id for event, _ in matched]
-    classification_by_event = {}
-    if event_ids:
-        linked = (
-            session.query(ThreatClassification)
-            .filter(ThreatClassification.telemetry_event_id.in_(event_ids))
-            .order_by(ThreatClassification.id.desc())
-            .all()
+        from sqlalchemy import or_
+        query = session.query(TelemetryEvent).join(Agent).filter(
+            or_(
+                TelemetryEvent.malware_confidence >= min_confidence,
+                TelemetryEvent.network_risk_score >= min_confidence,
+            )
         )
-        for classification in linked:
-            classification_by_event.setdefault(classification.telemetry_event_id, classification)
 
-    results = []
-    for event, confidence in matched:
-        classification = classification_by_event.get(event.id)
-        results.append({
-            "id": str(event.id),
-            "agent_id": event.agent.agent_id,
-            "hostname": event.agent.hostname,
-            "os_type": event.agent.os_type,
-            "event_type": event.event_type,
-            "event_subtype": event.event_subtype,
-            "severity": event.severity,
-            "timestamp": event.timestamp.isoformat(),
-            "confidence": confidence,
-            "source": "edr_telemetry",
-            "data": event.event_data,
-            "classification": {
-                "id": classification.id,
-                "threat_type": classification.threat_type,
-                "severity": classification.severity,
-                "risk_score": round(classification.risk_score or 0, 2),
-                "mitre_tactics": classification.mitre_tactic,
-            } if classification else None,
-        })
+        if os_type:
+            query = query.filter(Agent.os_type == os_type)
 
-    return jsonify(results)
+        events = query.order_by(TelemetryEvent.timestamp.desc()).limit(limit).all()
+
+        event_ids = [event.id for event in events]
+        classification_by_event = {}
+        if event_ids:
+            linked = (
+                session.query(ThreatClassification)
+                .filter(ThreatClassification.telemetry_event_id.in_(event_ids))
+                .order_by(ThreatClassification.id.desc())
+                .all()
+            )
+            for classification in linked:
+                classification_by_event.setdefault(classification.telemetry_event_id, classification)
+
+        results = []
+        for event in events:
+            confidence = _telemetry_confidence(event)
+            classification = classification_by_event.get(event.id)
+            results.append({
+                "id": str(event.id),
+                "agent_id": event.agent.agent_id,
+                "hostname": event.agent.hostname,
+                "os_type": event.agent.os_type,
+                "event_type": event.event_type,
+                "event_subtype": event.event_subtype,
+                "severity": event.severity,
+                "timestamp": event.timestamp.isoformat(),
+                "confidence": confidence,
+                "source": "edr_telemetry",
+                "data": event.event_data,
+                "classification": {
+                    "id": classification.id,
+                    "threat_type": classification.threat_type,
+                    "severity": classification.severity,
+                    "risk_score": round(classification.risk_score or 0, 2),
+                    "mitre_tactic": classification.mitre_tactic,
+                } if classification else None,
+            })
+
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
 
 
 @app.route("/api/edr-agents/summary", methods=["GET"])
@@ -1173,7 +1187,11 @@ def get_edr_summary():
         if _classification_origin(classification) == "edr_telemetry"
     ]
 
-    total_events = len(telemetry_threats)
+    total_events = (
+        session.query(TelemetryEvent)
+        .filter(TelemetryEvent.timestamp >= since)
+        .count()
+    )
     high_conf_detections = sum(
         1
         for classification in telemetry_threats

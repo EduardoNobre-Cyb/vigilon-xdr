@@ -1,5 +1,4 @@
 # Vigilon Triage: Threat Classification
-# Categorizes threats and assigns risk scores using ML
 
 from typing import Dict, List
 from shared.communication.message_bus import message_bus
@@ -1121,20 +1120,19 @@ class ThreatClassificationAgent:
         }
 
     def _derive_edr_scores(self, description: str) -> Dict:
-        """Derive exploitability/impact/risk for EDR telemetry descriptions."""
         d = (description or "").lower()
 
-        exploitability = 4.0
-        impact = 3.5
+        exploitability = 5.0
+        impact = 4.5
 
         if "family=process" in d:
-            exploitability += 0.4
+            exploitability += 0.5
         if "family=network" in d:
-            exploitability += 0.8
+            exploitability += 1.0
 
         if "hint:nc_usage" in d:
             exploitability += 1.8
-            impact += 1.0
+            impact += 1.2
         if "hint:reverse_shell_pattern" in d:
             exploitability += 2.4
             impact += 2.1
@@ -1142,7 +1140,8 @@ class ThreatClassificationAgent:
             exploitability += 1.5
             impact += 1.2
         if "hint:high_risk_port" in d:
-            exploitability += 0.9
+            exploitability += 1.0
+            impact += 1.0
         if "hint:ephemeral_exec_path" in d:
             impact += 0.8
 

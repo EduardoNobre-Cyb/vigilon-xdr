@@ -2,7 +2,7 @@ import uuid
 import os
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
 from flask import request
 from flask_socketio import emit, join_room, leave_room
@@ -22,6 +22,8 @@ EDR_STATUS_ALERTS = os.environ.get("EDR_STATUS_ALERTS", "true").lower() == "true
 OFFLINE_GRACE_SECONDS = int(os.environ.get("EDR_OFFLINE_GRACE_SECONDS", "60"))
 _offline_alerted = set()
 
+DASHBOARD_ROOM = "dashboards"
+
 _socketio = None
 _get_db_session = None
 
@@ -40,6 +42,14 @@ def _get_real_db_session():
 
     raise TypeError("Database factory did not return a SQLAlchemy session or a valid session context manager")
 
+def _push_to_dashboards(event_name: str, payload: dict):
+    if _socketio is None:
+        return
+    try:
+        _socketio.emit(event_name, payload, room=DASHBOARD_ROOM)
+    except Exception as e:
+        logger.warning(f"Live dashboard push failed ({event_name}): {e}")
+
 
 def register_agent_handlers(socketio, get_db_session):
     global _socketio, _get_db_session
@@ -56,6 +66,10 @@ def register_agent_handlers(socketio, get_db_session):
 
             if not all([agent_id, hostname, os_type]):
                 emit("error", {"message": "Missing required agent metadata"})
+                return
+
+            if agent_id == DASHBOARD_ROOM:
+                emit("error", {"message": "Reserved agent_id"})
                 return
             
             agent = db.query(Agent).filter_by(agent_id=agent_id).first()
@@ -86,6 +100,11 @@ def register_agent_handlers(socketio, get_db_session):
             ACTIVE_AGENTS[agent_id] = request.sid
             join_room(agent_id)
             _announce_online(agent_id, hostname, os_type, is_new)
+            _push_to_dashboards("edr_agent_status", {
+                "agent_id": agent_id,
+                "hostname": hostname,
+                "status": "online",
+            })
 
             pending_actions = db.query(AgentAction).filter_by(agent_id=agent.id, status="pending").all()
 
@@ -165,6 +184,11 @@ def register_agent_handlers(socketio, get_db_session):
             logger.info("Ingested %s telemetry events from %s", len(events), agent_id)
             emit("telemetry_ack", {"count": len(events)})
 
+            _push_to_dashboards("edr_telemetry_update", {
+                "agent_id": agent_id,
+                "count": len(events),
+            })
+
             if stored_events:
                 def run_threat_analysis():
                     analysis_db, _ = _get_real_db_session()
@@ -186,7 +210,41 @@ def register_agent_handlers(socketio, get_db_session):
 
                         classifier = ThreatClassificationAgent()
 
+                        dedup_window = datetime.now(timezone.utc) - timedelta(minutes=5)
+
                         for event, telemetry_id in high_conf_events:
+                            event_data = event.get("data") or event.get("event_data", {})
+                            event_type = event.get("event_type", "unknown")
+
+                            if event_type == "process":
+                                dedup_key = event_data.get("name") or event_data.get("process_name") or ""
+                            elif event_type == "network":
+                                dedup_key = str(event_data.get("dest_port") or "")
+                            else:
+                                dedup_key = ""
+
+                            if dedup_key:
+                                existing = (
+                                    analysis_db.query(ThreatClassification)
+                                    .filter(
+                                        ThreatClassification.agent_id == agent_row_id,
+                                        ThreatClassification.timestamp >= dedup_window,
+                                    )
+                                    .join(TelemetryEvent, ThreatClassification.telemetry_event_id == TelemetryEvent.id)
+                                    .filter(TelemetryEvent.event_type == event_type)
+                                    .first()
+                                )
+                                if existing:
+                                    existing_data = (existing.telemetry_event.event_data or {}) if existing.telemetry_event else {}
+                                    if event_type == "process":
+                                        existing_key = existing_data.get("name") or existing_data.get("process_name") or ""
+                                    elif event_type == "network":
+                                        existing_key = str(existing_data.get("dest_port") or "")
+                                    else:
+                                        existing_key = ""
+                                    if existing_key == dedup_key:
+                                        logger.info("Dedup: skipping %s %s (already classified within 5 min)", event_type, dedup_key)
+                                        continue
                             confidence = _coerce_confidence(event.get("malware_confidence") or event.get("network_risk_score", 0))
                             threat_description = _build_threat_description(event, hostname, confidence)
                             classification_input = _build_classification_input(event, hostname, confidence)
@@ -219,6 +277,38 @@ def register_agent_handlers(socketio, get_db_session):
                         analysis_db.commit()
                         logger.info(f"Classified {len(high_conf_events)} events")
 
+                        for event, telemetry_id in high_conf_events:
+                            confidence = _coerce_confidence(event.get("malware_confidence") or event.get("network_risk_score", 0))
+                            event_data = event.get("data") or event.get("event_data", {})
+                            event_type = event.get("event_type", "unknown")
+
+                            if event_type == "process":
+                                short_desc = f"{event_data.get('name', '?')} (PID {event_data.get('pid', '?')})"
+                            elif event_type == "network":
+                                short_desc = f"{event_data.get('process_name', '?')} → {event_data.get('dest_ip', '?')}:{event_data.get('dest_port', '?')}"
+                            else:
+                                short_desc = event.get("event_subtype", "unknown event")
+
+                            _push_to_dashboards("edr_detection_update", {
+                                "agent_id": agent_id,
+                                "hostname": hostname,
+                                "event_type": event_type,
+                                "short_desc": short_desc,
+                                "confidence": round(confidence, 2),
+                            })
+
+                        if alerts_enabled():
+                            for event, telemetry_id in high_conf_events:
+                                confidence = _coerce_confidence(event.get("malware_confidence") or event.get("network_risk_score", 0))
+                                desc = _build_threat_description(event, hostname, confidence)
+                                _socketio.start_background_task(
+                                    send_alert,
+                                    f"EDR Threat: {hostname}",
+                                    desc,
+                                    5,
+                                    ["rotating_light"],
+                                )
+
                     except Exception as e:
                         logger.error(f"Threat analysis error for agent {agent_id}: {str(e)}")
                     finally:
@@ -249,6 +339,13 @@ def register_agent_handlers(socketio, get_db_session):
 
                 logger.info(f"Action result: {action_id} = {status}")
                 emit("action_result_ack", {"action_id": action_id})
+                _push_to_dashboards("edr_action_update", {
+                    "agent_id": action.agent.agent_id,
+                    "action_id": str(action.id),
+                    "action_type": action.action_type,
+                    "status": status,
+                    "result_message": result_message,
+                })
 
         except Exception as e:
             logger.error(f"Action result processing error: {str(e)}")
@@ -270,6 +367,11 @@ def register_agent_handlers(socketio, get_db_session):
                     del ACTIVE_AGENTS[agent_id]
                     leave_room(agent_id)
                     logger.info(f"Agent disconnected: {agent_id}")
+                    _push_to_dashboards("edr_agent_status", {
+                        "agent_id": agent_id,
+                        "hostname": hostname,
+                        "status": "offline",
+                    })
                     _schedule_offline_check(agent_id, hostname)
                     break
         except Exception as e:
@@ -346,10 +448,16 @@ def dispatch_action_to_agent(agent_id: str, action_type: str, action_params: dic
             db.commit()
 
             logger.info(f"Action dispatched to {agent_id}: {action_type}")
-            return str(action.id)
         else:
             logger.warning(f"Agent {agent_id} is offline. Action queued.")
-            return str(action.id)
+
+        _push_to_dashboards("edr_action_update", {
+            "agent_id": agent_id,
+            "action_id": str(action.id),
+            "action_type": action_type,
+            "status": action.status,
+        })
+        return str(action.id)
 
     except Exception as e:
         logger.error(f"Error dispatching action to agent {agent_id}: {str(e)}")
@@ -428,7 +536,7 @@ def _build_classification_input(event: Dict, hostname: str, confidence: float) -
 
     hints = []
 
-    if proc_name_lower in {"nc", "ncat", "netcat"} or "nc " in cmdline_lower:
+    if proc_name_lower in {"nc", "ncat", "netcat"} or cmdline_lower.startswith("nc ") or " nc " in cmdline_lower:
         hints.append("hint:nc_usage")
     if " -e " in cmdline_lower or "/bin/bash" in cmdline_lower or "/bin/sh" in cmdline_lower:
         hints.append("hint:reverse_shell_pattern")

@@ -1100,9 +1100,87 @@ function showEDRMessage(text, type = "success") {
   setTimeout(() => div.remove(), 5000);
 }
 
-// Load EDR agents when page loads
-refreshEDRAgents();
 
-// Auto-refresh every 30 seconds
+async function refreshEDRAgentCards() {
+  try {
+    const response = await authFetch("/api/edr-agents");
+    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+    updateEDRAgentCards(await response.json());
+  } catch (error) {
+    console.error("Failed to refresh EDR agent cards:", error);
+  }
+}
+
+function connectEDRLiveUpdates() {
+  if (typeof io === "undefined") {
+    console.warn("Socket.IO client not loaded: EDR panel falls back to the 30s refresh.");
+    return;
+  }
+
+  const socket = io();
+
+  socket.on("connect", () => {
+    socket.emit("dashboard_subscribe", { token: localStorage.getItem("auth_token") });
+  });
+
+  socket.on("dashboard_subscribe_error", (msg) => {
+    console.warn("Line EDR updates refused:", msg.message);
+  });
+
+  socket.on("edr_agent_status", (msg) => {
+    refreshEDRAgentCards();
+    showEDRMessage(`${msg.hostname} is ${msg.status}`, msg.status === "online" ? "success" : "error");
+  });
+
+  socket.on("edr_action_update", (msg) => {
+    if (msg.status === "executed" || msg.status === "failed") {
+      showEDRMessage(`${msg.action_type}: ${msg.status}`, msg.status === "failed" ? "error": "success");
+    }
+
+    const modalOpen = document.getElementById("edr-actions-modal").style.display === "flex";
+    if (modalOpen && edrActionsState.selectedAgentId === msg.agent_id && edrActionsState.selectedTelemetryIndex !== null) {
+      selectEDRTelemetry(edrActionsState.selectedTelemetryIndex);
+    }
+  });
+
+  socket.on("edr_telemetry_update", (msg) => {
+    refreshEDRAgents();
+    const modalOpen = document.getElementById("edr-actions-modal").style.display === "flex";
+    if (modalOpen && edrActionsState.selectedAgentId && msg.agent_id === edrActionsState.selectedAgentId) {
+      refreshModalTelemetry();
+    }
+  });
+
+  socket.on("edr_detection_update", (msg) => {
+    refreshEDRAgents();
+    const modalOpen = document.getElementById("edr-actions-modal").style.display === "flex";
+    if (modalOpen && edrActionsState.selectedAgentId && msg.agent_id === edrActionsState.selectedAgentId) {
+      refreshModalTelemetry();
+    }
+    showEDRMessage(
+      `Threat detected on ${msg.hostname}: ${msg.short_desc} (${(msg.confidence * 100).toFixed(0)}%)`, "error"
+    );
+  });
+}
+
+async function refreshModalTelemetry() {
+  const agentId = edrActionsState.selectedAgentId;
+  const selectedAgent = edrActionsState.agents.find((a) => a.agent_id === agentId);
+  if (!selectedAgent) return;
+  try {
+    const response = await authFetch(`/api/edr-agents/${agentId}/telemetry?limit=50`);
+    if (!response.ok) return;
+    if (edrActionsState.selectedAgentId !== agentId) return;
+    const telemetry = await response.json();
+    edrActionsState.telemetry = telemetry;
+    renderTelemetryList(selectedAgent);
+  } catch (e) {
+    console.error("refreshModalTelemetry: ", e);
+  }
+}
+
+refreshEDRAgents();
+connectEDRLiveUpdates();
+
 setInterval(refreshEDRAgents, 30000);
 
