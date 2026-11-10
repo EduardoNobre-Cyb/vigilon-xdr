@@ -6,6 +6,11 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
+$VigilonSysmonConfig = "$PSScriptRoot\sysmonconfig-vigilon.xml"
+if (-not (Test-Path $VigilonSysmonConfig)) {
+    throw "Missing Vigilon Sysmon config at $VigilonSysmonConfig. Create it first."
+}
+
 $InstallDir = "C:\Program Files\Vigilon EDR"
 $DataDir = "C:\ProgramData\Vigilon EDR"
 $LogDir = "$DataDir\logs"
@@ -32,29 +37,35 @@ if ($Python -like "*\WindowsApps\*") {
 Write-Host "Using Python: $Python"
 
 $sysmon = Get-Service -Name Sysmon64, Sysmon -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($sysmon) {
-    Write-Host "Sysmon is already installed ($($sysmon.Name))."
-    if ($sysmon.Status -ne "Running") { Start-Service -Name $sysmon.Name }
-} else {
+$sysmonExe = "$SysmonDir\Sysmon64.exe"
+
+if (-not $sysmon) {
     New-Item -ItemType Directory -Force -Path $SysmonDir | Out-Null
-    $sysmonExe = "$SysmonDir\Sysmon64.exe"
-    $sysmonConfig = "$SysmonDir\sysmonconfig.xml"
     try {
         if (-not (Test-Path $sysmonExe)) {
             Write-Host "Downloading Sysmon from Microsoft..."
             Invoke-WebRequest -Uri "https://download.sysinternals.com/files/Sysmon.zip" -OutFile "$SysmonDir\Sysmon.zip" -UseBasicParsing
-            Expand-archive -Path "$SysmonDir\Sysmon.zip" -DestinationPath $SysmonDir -Force
-        }
-        if (-not (Test-Path $sysmonConfig)) {
-            Write-Host "Downloading the Sysmon config..."
-            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml" -OutFile $sysmonConfig -UseBasicParsing
+            Expand-Archive -Path "$SysmonDir\Sysmon.zip" -DestinationPath $SysmonDir -Force
         }
     } catch {
-        throw "Sysmon isn't installed and couldn't be downloaded. Copy $sysmonExe and $sysmonConfig to $SysmonDir and run this again. Details: $_"
+        throw "Couldn't download Sysmon. Copy Sysmon64.exe to $SysmonDir andrun this again. Details: $_"
     }
-    & $sysmonExe -accepteula -i $sysmonConfig | Out-Null
+    & $sysmonExe -accepteula -i $VigilonSysmonConfig | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Sysmon install failed with code $LASTEXITCODE" }
-    Write-Host "Sysmon installed."
+    Write-Host "Sysmon installed with Vigilon config."
+} else {
+    Write-Host "Sysmon is already installed ($($sysmon.Name))."
+    if ($sysmon.Status -ne "Running") { Start-Service -Name $sysmon.Name }
+
+    if (-not (Test-Path $sysmonExe)) {
+        $sysmonExe = (Get-Command Sysmon64, Sysmon -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    }
+    if (-not $sysmonExe -or -not (Test-Path $sysmonExe)) {
+        Write-Warning "Can't find Sysmon64.exe to update config. Copy it to $SysmonDir."
+    } else {
+        & $sysmonExe -c $VigilonSysmonConfig | Out-Null
+        Write-Host "Applied Vigilon Sysmon config."
+    }
 }
 
 $ErrorActionPreference = "Continue"
@@ -79,6 +90,7 @@ BACKEND_URL=$BackendUrl
 PROCESS_COLLECTOR=sysmon
 EDR_MODEL_DIR=$InstallDir\data\models\EDR\windows
 AUTO_RESPONSE_MODE=dry_run
+EDR_API_KEY=
 "@
     Set-Content -Path $EnvFile -Value $settings -Encoding ASCII
     Write-Host "Created $EnvFile"

@@ -13,6 +13,7 @@ from agents.classification.classifier_agent import ThreatClassificationAgent
 from threading import Thread
 from shared.notify import alerts_enabled, send_alert
 
+EDR_API_KEY = os.environ.get("EDR_API_KEY", "").strip()
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ ACTIVE_AGENTS = {}
 EDR_STATUS_ALERTS = os.environ.get("EDR_STATUS_ALERTS", "true").lower() == "true"
 OFFLINE_GRACE_SECONDS = int(os.environ.get("EDR_OFFLINE_GRACE_SECONDS", "60"))
 _offline_alerted = set()
+STALENESS_POLL_SECONDS = 10
 
 DASHBOARD_ROOM = "dashboards"
 
@@ -60,6 +62,11 @@ def register_agent_handlers(socketio, get_db_session):
     def handle_agent_register(data):
         db, managed = _get_real_db_session()
         try:
+            if EDR_API_KEY and data.get("api_key") != EDR_API_KEY:
+                logger.warning(f"Agent registration rejected: bad or missing api_key from %s", request.remote_addr)
+                emit("error", {"message": "Authentication failed"})
+                return
+
             agent_id = data.get("agent_id")
             hostname = data.get("hostname")
             os_type = data.get("os_type")
@@ -138,6 +145,11 @@ def register_agent_handlers(socketio, get_db_session):
     def handle_telemetry(data):
         db, managed = _get_real_db_session()
         try:
+            if EDR_API_KEY and data.get("api_key") != EDR_API_KEY:
+                logger.warning(f"Telemetry rejected: bad or missing api_key from %s", request.remote_addr)
+                emit("error", {"message": "Authentication failed"})
+                return
+            
             agent_id = data.get("agent_id")
             events = data.get("events", [])
 
@@ -150,6 +162,18 @@ def register_agent_handlers(socketio, get_db_session):
 
             agent_row_id = agent.id
             hostname = agent.hostname
+
+            if agent.status == "offline":
+                agent.status = "online"
+                ACTIVE_AGENTS[agent_id] = request.sid
+                join_room(agent_id)
+                logger.info(f"Agent resurrected via telemetry: %s (%s)", agent_id, hostname)
+                _push_to_dashboards("edr_agent_status", {
+                    "agent_id": agent_id,
+                    "hostname": hostname,
+                    "status": "online",
+                })
+                _announce_online(agent_id, hostname, agent.os_type, False)
             stored_events = []
 
             for event in events:
@@ -375,9 +399,11 @@ def register_agent_handlers(socketio, get_db_session):
                     _schedule_offline_check(agent_id, hostname)
                     break
         except Exception as e:
-            logger.error(f"Error during agent disconnect: {str(e)}")
+            logger.error(f"Disconnect handling error: {str(e)}")
         finally:
             db.close()
+
+    start_staleness_monitor()
 
 
 def _status_alerts_on() -> bool:
@@ -393,10 +419,24 @@ def _alert_if_still_offline(agent_id: str, hostname: str):
         return
     _offline_alerted.add(agent_id)
     logger.warning(f"Agent still offline after {OFFLINE_GRACE_SECONDS}s: {agent_id} ({hostname})")
+
+    _push_to_dashboards("edr_detection_update", {
+        "agent_id": agent_id,
+        "hostname": hostname,
+        "event_type": "agent_offline",
+        "short_desc": f"Agent disconnected and silent for {OFFLINE_GRACE_SECONDS}s",
+        "confidence": 1.0,
+    })
+
+    _write_offline_incident(agent_id, hostname, None)
+
     send_alert(
-        f"EDR Sensor OFFLINE: {hostname}",
-        f"It hasnt reconnected for {OFFLINE_GRACE_SECONDS}s. The machine may be shut down or off the network, "
-        "or something stopped the agent. That machine is unprotected until it comes back.", 5, ["rotating_light"]
+        f"SILENCE ALERT: {hostname} went dark",
+        f"Agent {agent_id[:8]} disconnected and hasnt come back for {OFFLINE_GRACE_SECONDS}s. "
+        "The machine may be shut down, off the network, or something killed the agent. "
+        "That endpoint is unprotected until it reconnects.",
+        5,
+        ["rotating_light", "skull"],
     )
 
 def _announce_online(agent_id: str, hostname: str, os_type: str, is_new: bool):
@@ -415,6 +455,100 @@ def _announce_online(agent_id: str, hostname: str, os_type: str, is_new: bool):
     else:
         return
     _socketio.start_background_task(send_alert, title, message, priority, tags)
+
+def _write_offline_incident(agent_id: str, hostname: str, last_heartbeat):
+    db, _ = _get_real_db_session()
+    try:
+        agent = db.query(Agent).filter_by(agent_id=agent_id).first()
+        if not agent:
+            return
+        tc = ThreatClassification(
+            asset_id=None,
+            vulnerability_id=None,
+            agent_id=agent.id,
+            telemetry_event_id=None,
+            threat_type="agent_offline",
+            exploitability_score=0.0,
+            impact_score=10.0,
+            risk_score=10.0,
+            mitre_tactic="Defense Evasion",
+            severity="Critical",
+            ensemble_confidence=1.0,
+            timestamp=datetime.now(timezone.utc),
+        )
+        db.add(tc)
+        db.commit()
+        logger.info(f"Wrote agent_offline incident for {agent_id} ({hostname})")
+    except Exception as e:
+        logger.error(f"Failed to write agent_offline incident for {agent_id}: {e}")
+    finally:
+        db.close()
+
+def start_staleness_monitor():
+    if _socketio is None:
+        logger.error("Cannot start staleness monitor: SocketIO not initialised")
+        return
+
+    def _staleness_loop():
+        logger.info("Staleness monitor started (pol every %ds, grace %ds)", STALENESS_POLL_SECONDS, OFFLINE_GRACE_SECONDS)
+        while True:
+            _socketio.sleep(STALENESS_POLL_SECONDS)
+            if not _status_alerts_on():
+                continue
+            try:
+                db, _ = _get_real_db_session()
+                try:
+                    cutoff = datetime.now(timezone.utc) - timedelta(seconds=OFFLINE_GRACE_SECONDS)
+                    stale_agents = (
+                        db.query(Agent)
+                        .filter(Agent.status == "online", Agent.last_heartbeat < cutoff)
+                        .all()
+                    )
+                    for agent in stale_agents:
+                        aid = agent.agent_id
+                        if aid in _offline_alerted:
+                            continue
+
+                        agent.status = "offline"
+                        db.commit()
+
+                        if aid in ACTIVE_AGENTS:
+                            del ACTIVE_AGENTS[aid]
+
+                        _offline_alerted.add(aid)
+                        logger.warning("Staleness monitor: %s (%s) stale since %s - firing silence alert", aid, agent.hostname, agent.last_heartbeat.isoformat())
+
+                        _push_to_dashboards("edr_agent_status", {
+                            "agent_id": aid,
+                            "hostname": agent.hostname,
+                            "status": "offline",
+                        })
+                        _push_to_dashboards("edr_detection_update", {
+                            "agent_id": aid,
+                            "hostname": agent.hostname,
+                            "event_type": "agent_offline",
+                            "short_desc": f"Agent silent since {agent.last_heartbeat.strftime('%H:%M:%S')}",
+                            "confidence": 1.0,
+                        })
+
+                        _write_offline_incident(aid, agent.hostname, agent.last_heartbeat)
+
+                        send_alert(
+                            f"SILENCE ALERT: {agent.hostname} went dark",
+                            f"Agent {aid[:8]} last heartbeat was {agent.last_heartbeat.strftime('%H:%M:%S UTC')}. "
+                            f"It has been unreachable for over {OFFLINE_GRACE_SECONDS}s. "
+                            "If you're running a detonation, this machine's sensor was likely killed. "
+                            "No telemetry = no alerts, so treat this as a detection gap, not a clean bill of heath.",
+                            5,
+                            ["rotating_light", "skull"],
+                        )
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.error(f"Staleness monitor error: {e}")
+
+    _socketio.start_background_task(_staleness_loop)
+
 
 def dispatch_action_to_agent(agent_id: str, action_type: str, action_params: dict) -> Optional[str]:
     if not _get_db_session or not _socketio:

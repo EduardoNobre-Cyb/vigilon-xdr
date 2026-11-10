@@ -1,0 +1,84 @@
+<Sysmon schemaversion="4.90">
+  <!--
+    Vigilon EDR — Sysmon configuration
+    Applied automatically by install.ps1.
+    Base: process + network visibility the agent parses today.
+    G2:   CreateRemoteThread, ProcessAccess (lsass), ImageLoad,
+          ProcessTampering — captured to the log for detonation evidence.
+  -->
+
+  <HashAlgorithms>md5,sha256,IMPHASH</HashAlgorithms>
+  <CheckRevocation/>
+
+  <EventFiltering>
+
+    <!-- ── EID 1: Process creation ─────────────────────────────────────
+         The agent's primary telemetry source (Phase B2 collector).
+         Exclude the noisiest harmless system processes. -->
+    <RuleGroup name="ProcessCreate" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <Image condition="is">C:\Windows\System32\backgroundTaskHost.exe</Image>
+        <Image condition="is">C:\Windows\System32\RuntimeBroker.exe</Image>
+        <Image condition="is">C:\Windows\System32\SearchProtocolHost.exe</Image>
+        <Image condition="is">C:\Windows\System32\SearchFilterHost.exe</Image>
+        <Image condition="is">C:\Windows\System32\audiodg.exe</Image>
+        <Image condition="is">C:\Windows\System32\conhost.exe</Image>
+        <Image condition="is">C:\Windows\System32\musNotification.exe</Image>
+        <Image condition="is">C:\Windows\System32\MusNotifyIcon.exe</Image>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <!-- ── EID 3: Network connections ──────────────────────────────────
+         Needed for the agent's network telemetry. Exclude svchost
+         (Windows Update, DNS, etc.) which is extremely noisy. -->
+    <RuleGroup name="NetworkConnect" groupRelation="or">
+      <NetworkConnect onmatch="exclude">
+        <Image condition="is">C:\Windows\System32\svchost.exe</Image>
+        <DestinationPort condition="is">5355</DestinationPort>
+        <DestinationPort condition="is">5353</DestinationPort>
+      </NetworkConnect>
+    </RuleGroup>
+
+    <!-- ── EID 7: Image/DLL loads ─────────────────────────────────
+         Captures every module load with hashes and signature status.
+         Needed later (G3) to know which modules *should* be loaded when
+         comparing memory vs disk. Exclude the noisiest loaders. -->
+    <RuleGroup name="ImageLoad" groupRelation="or">
+      <ImageLoad onmatch="exclude">
+        <Image condition="is">C:\Windows\explorer.exe</Image>
+        <Image condition="is">C:\Windows\System32\svchost.exe</Image>
+        <Image condition="is">C:\Windows\System32\RuntimeBroker.exe</Image>
+        <ImageLoaded condition="begin with">C:\Windows\assembly\</ImageLoaded>
+      </ImageLoad>
+    </RuleGroup>
+
+    <!-- ── EID 8: CreateRemoteThread ──────────────────────────────
+         Classic injection signal — one process creating a thread in
+         another. Carries StartAddress/StartModule (partial call stack).
+         Log everything; this event is naturally low-volume. -->
+    <RuleGroup name="CreateRemoteThread" groupRelation="or">
+      <CreateRemoteThread onmatch="exclude"></CreateRemoteThread>
+    </RuleGroup>
+
+    <!-- ── EID 10: ProcessAccess ──────────────────────────────────
+         Who is opening a handle into another process. The CallTrace field
+         is the free "call stack at a sensitive operation." Keep the filter
+         tight — lsass only — or this event alone can double your log. -->
+    <RuleGroup name="ProcessAccess" groupRelation="or">
+      <ProcessAccess onmatch="include">
+        <TargetImage condition="is">C:\Windows\System32\lsass.exe</TargetImage>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <!-- ── EID 25: ProcessTampering ───────────────────────────────
+         Sysmon's own signal for image hollowing / module stomping.
+         "Image is replaced" or "Image is locked for access". This is the
+         headline G2 event — the cheapest possible stomping alarm. -->
+    <RuleGroup name="ProcessTampering" groupRelation="or">
+      <ProcessTampering onmatch="include">
+        <Type condition="is not">none</Type>
+      </ProcessTampering>
+    </RuleGroup>
+
+  </EventFiltering>
+</Sysmon>

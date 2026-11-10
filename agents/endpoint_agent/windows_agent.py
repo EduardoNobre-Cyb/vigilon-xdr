@@ -35,6 +35,8 @@ CONFIDENCE_THRESHOLD_SEND = 0.0
 CONFIDENCE_THRESHOLD_ALERT = 0.70
 CONFIDENCE_THRESHOLD_AUTO_RESPONSE = 0.95
 PROCESS_COLLECTOR = os.getenv("PROCESS_COLLECTOR", "polling").lower()
+HEARTBEAT_INTERVAL = 30
+EDR_API_KEY = os.getenv("EDR_API_KEY", "").strip()
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
@@ -342,6 +344,8 @@ class WindowsEndpointAgent:
             "ip_address": socket.gethostbyname(socket.gethostname()),
             "ml_models_deployed": self.ml_manager.has_models(),
         }
+        if EDR_API_KEY:
+            payload["api_key"] = EDR_API_KEY
         self.sio.emit("agent_register", payload)
         logger.info(f"Registered agent {self.agent_id}")
 
@@ -439,6 +443,10 @@ class WindowsEndpointAgent:
                 elif time.time() - self.last_telemetry_send > TELEMETRY_BATCH_TIMEOUT:
                     self.send_telemetry()
 
+                if time.time() - self.last_telemetry_send >= HEARTBEAT_INTERVAL:
+                    self._send_heartbeat()
+                    self.last_telemetry_send = time.time()
+
                 time.sleep(1)
             except Exception as e:
                 logger.error(f"Telemetry error: {e}")
@@ -451,16 +459,31 @@ class WindowsEndpointAgent:
         self.telemetry_buffer.clear()
 
         try:
-            self.sio.emit("telemetry", {
+            payload = {
                 "agent_id": self.agent_id,
-                "events": events
-            })
+                "events": events,
+            }
+            if EDR_API_KEY:
+                payload["api_key"] = EDR_API_KEY
+            self.sio.emit("telemetry", payload)
             self.last_telemetry_send = time.time()
             logger.debug(f"Sent {len(events)} telemetry events")
         except Exception as e:
             logger.error(f"Telemetry send error: {e}")
             for event in events:
                 self.telemetry_buffer.append(event)
+
+    def _send_heartbeat(self):
+        if not self.sio.connected:
+            return
+        payload = {"agent_id": self.agent_id, "events": []}
+        if EDR_API_KEY:
+            payload["api_key"] = EDR_API_KEY
+        try:
+            self.sio.emit("telemetry", payload)
+            logger.debug("Sent heartbeat (idle keepalive)")
+        except Exception as e:
+            logger.error(f"Heartbeat error: {e}")
 
     def run(self):
         self.running = True
@@ -472,7 +495,7 @@ class WindowsEndpointAgent:
         while self.running:
             try:
                 if not self.sio.connected:
-                    self.sio.connect(BACKEND_URL)
+                    self.sio.connect(BACKEND_URL, transports=["polling"])
                 time.sleep(1)
             except KeyboardInterrupt:
                 break

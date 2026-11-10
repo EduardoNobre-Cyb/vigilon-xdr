@@ -37,7 +37,9 @@ PROCESS_EVENT_DEDUP_WINDOW_SEC = int(os.getenv("PROCESS_EVENT_DEDUP_WINDOW_SEC",
 ML_FIRST_MODE = os.getenv("ML_FIRST_MODE", "true").lower() == "true"
 ML_EVENT_MIN_SCORE = float(os.getenv("ML_EVENT_MIN_SCORE", "0.70"))
 TELEMETRY_POLL_INTERVAL = float(os.getenv("TELEMETRY_POLL_INTERVAL", "0.25"))
+HEARTBEAT_INTERVAL = 30
 PROCESS_COLLECTOR = os.getenv("PROCESS_COLLECTOR", "polling").lower()
+EDR_API_KEY = os.getenv("EDR_API_KEY", "").strip()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -471,6 +473,8 @@ class LinuxEndpointAgent:
             "agent_version": AGENT_VERSION,
             "ip_address": socket.gethostbyname(socket.gethostname())
         }
+        if EDR_API_KEY:
+            payload["api_key"] = EDR_API_KEY
         self.sio.emit("agent_register", payload)
         logger.info(f"Registered agent: {self.agent_id}")
 
@@ -614,6 +618,9 @@ class LinuxEndpointAgent:
 
                 if should_flush and self.send_telemetry():
                     self.last_flush_time = now
+                elif (now - self.last_flush_time) >= HEARTBEAT_INTERVAL:
+                    self._send_heartbeat()
+                    self.last_flush_time = now
 
                 time.sleep(TELEMETRY_POLL_INTERVAL)
             except Exception as e:
@@ -626,10 +633,13 @@ class LinuxEndpointAgent:
         events = list(self.telemetry_buffer)
         self.telemetry_buffer.clear()
         try:
-            self.sio.emit("telemetry", {
+            payload = {
                 "agent_id": self.agent_id,
                 "events": events,
-            })
+            }
+            if EDR_API_KEY:
+                payload["api_key"] = EDR_API_KEY
+            self.sio.emit("telemetry", payload)
             type_counts = {}
             for event in events:
                 event_type = event.get("event_type", "unknown")
@@ -645,6 +655,18 @@ class LinuxEndpointAgent:
             for event in events:
                 self.telemetry_buffer.append(event)
             return False
+
+    def _send_heartbeat(self):
+        if not self.sio.connected:
+            return
+        payload = {"agent_id": self.agent_id, "events": []}
+        if EDR_API_KEY:
+            payload["api_key"] = EDR_API_KEY
+        try:
+            self.sio.emit("telemetry", payload)
+            logger.debug("Sent heartbeat (idle keepalive)")
+        except Exception as e:
+            logger.error(f"Heartbeat error: {e}")
 
     def stop(self):
         self.running = False
