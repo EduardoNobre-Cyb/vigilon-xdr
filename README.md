@@ -129,8 +129,8 @@ Real samples from 12 malware families were detonated one at a time on the FLARE-
 
 | Family | Type | Pulse (process) | Spectra (file) | Beacon (network) | Result |
 |---|---|---|---|---|---|
-| NjRAT | RAT | **0.98** | **0.95** | 0.18 | **Detected** (3 models) |
-| WannaCry | Ransomware | **0.91** | **0.99** (30+ files) | 0.18 | **Detected** (2 models) |
+| NjRAT | RAT | **0.98** | **0.95** | — | **Detected** (2 models) |
+| WannaCry | Ransomware | **0.91** | **0.99** (30+ files) | — | **Detected** (2 models) |
 | LockBit | Ransomware | 0.09 | **0.75** | **0.82** (SMB lateral movement) | **Detected** (2 models) |
 | BadRabbit | Ransomware | **0.80** | — | — | **Detected** |
 | DarkComet | RAT | 0.29 | **0.77** | — | **Detected** |
