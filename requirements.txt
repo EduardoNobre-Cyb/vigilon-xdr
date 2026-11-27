@@ -29,6 +29,7 @@ python-dotenv==1.2.1
 mitreattack-python==5.3.0
 vulners==3.1.6
 cvss==3.6
+geoip2==5.3.0
 
 # Scheduling and Realtime
 apscheduler==3.11.2
@@ -42,3 +43,10 @@ opentelemetry-sdk==1.41.0
 # Runtime and validation extras
 psutil==7.0.0
 pytest==8.3.2
+signify
+
+# Binary analysis
+pefile==2024.8.26
+inotify_simple==1.3.5
+oletools==0.60.2
+pypdf==6.9.2

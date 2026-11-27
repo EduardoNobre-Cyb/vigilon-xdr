@@ -101,3 +101,10 @@ docker-compose.yml
 !data/models/EDR/windows/*.pkl
 !data/models/EDR/linux/
 !data/models/EDR/linux/*.pkl
+data/training/static/*/
+data/GeoLite2-City.mmdb
+data/report.*.txt
+data/*_events_*.csv
+data/g3_baselines/
+scripts/download-malicious-docs.sh
+Notes/

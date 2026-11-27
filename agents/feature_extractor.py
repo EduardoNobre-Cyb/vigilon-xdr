@@ -1,3 +1,5 @@
+# Vigilon Pulse - Process Monitor
+
 import os
 import math
 import re
@@ -7,6 +9,12 @@ from datetime import datetime
 
 import pandas as pd
 import numpy as np
+
+try:
+    from signify.authenticode import SignedPEFile
+    HAS_SIGNIFY = True
+except ImportError:
+    HAS_SIGNIFY = False
 
 class ProcessFeatureExtractor:
     """Extract features from process execution events"""
@@ -44,7 +52,6 @@ class ProcessFeatureExtractor:
         )
 
     def extract_features(self, event: Dict) -> Dict[str, float]:
-
         features = {}
 
         proc_name = event.get("name", "").lower()
@@ -97,6 +104,19 @@ class ProcessFeatureExtractor:
         filename = self._strip_version(path.replace("\\", "/").rsplit("/", 1)[-1])
         features["filename_length"] = min(len(filename) / 100, 1.0)
         features["has_long_extension"] = 1.0 if filename.count(".") > 1 else 0.0
+
+        features["uses_attrib_hide"] = 1.0 if ("attrib " in cmdline and ("+h" in cmdline or "+s" in cmdline)) else 0.0
+        features["uses_permission_change"] = 1.0 if ("icacls " in cmdline or "cacls " in cmdline or("takeown" in cmdline and "/f " in cmdline)) else 0.0
+        features["deletes_recovery"] = 1.0 if ("delete shadows" in cmdline or "shadowcopy delete" in cmdline or "recoveryenabled no" in cmdline or ("bcdedit" in cmdline and "no" in cmdline)) else 0.0
+        features["creates_scheduled_task"] = 1.0 if ("schtasks" in proc_name and "/create" in cmdline) or ("schtasks" in cmdline and "/create" in cmdline) else 0.0
+        features["modifies_firewall"] = 1.0 if ("netsh " in cmdline and ("firewall" in cmdline or "advfirewall" in cmdline)) else 0.0
+        features["rundll32_ordinal_load"] = 1.0 if ("rundll32" in proc_name and ",#" in cmdline) else 0.0
+        features["exec_from_appdata"] = 1.0 if ("\\appdata\\roaming\\" in path or "\\appdata\\local\\" in path) else 0.0
+        
+        lolbin_parents = {"winword.exe", "excel.exe", "outlook.exe", "powerpnt.exe",
+                          "msedge.exe", "chrome.exe", "firefox.exe", "iexplore.exe"}
+        lolbin_children = {"cmd", "powershell", "wscript", "cscript", "mshta", "rundll32", "certutil", "bitsadmin"}
+        features["lolbin_parent_chain"] = 1.0 if (parent_name in lolbin_parents and proc_name in lolbin_children) else 0.0
 
         return features
 
@@ -195,8 +215,6 @@ class NetworkFeatureExtractor:
         
 
 class FileFeatureExtractor: 
-    """Extract features from file operation events"""
-
     def __init__(self):
         self.risky_extensions = {
             ".exe", ".dll", ".sys", ".scr", ".bat", ".ps1", ".vbs",
@@ -209,40 +227,75 @@ class FileFeatureExtractor:
         }
 
     def extract_features(self, event: Dict) -> Dict[str, float]:
-        """Extract feature vector from file operation event"""
-
         features = {}
 
-        # Extension features
-        file_path = event.get("file_path", "").lower()
-        ext = os.path.splitext(file_path)[1]
-        features["risky_extension"] = 1.0 if ext in self.risky_extensions else 0.0
-        features["executable_extension"] = 1.0 if ext in {".exe", ".dll", ".sys"} else 0.0
+        proc_name = event.get("name", "").lower()
+        name_aliases = {
+            "nc.traditional": "nc",
+            "nc.openbsd": "nc",
+            "netcat": "nc",
+        }
+        proc_name = name_aliases.get(proc_name, proc_name)
+        proc_name = self._strip_version(proc_name)
+        if proc_name.endswith(".exe"):
+            proc_name = proc_name[:-4]
+        features["is_suspicious_process"] = 1.0 if proc_name in self.suspicious_processes else 0.0
+        features["process_name_length"] = min(len(proc_name) / 50, 1.0)
 
-        # Location features
-        features["write_to_risky_dir"] = 1.0 if any(d in file_path for d in self.risky_directories) else 0.0
-        features["write_to_system_dir"] = 1.0 if "c:\\windows" in file_path or "c:\\program files" in file_path else 0.0
+        cmdline = event.get("command_line", "").lower()
+        features["cmdline_length"] = min(len(cmdline) / 1000, 1.0)
+        features["cmdline_entropy"] = self._calculate_entropy(cmdline)
 
-        # Signature features
-        features["unsigned_executable"] = 1.0 if not event.get("is_signed", True) and ext in {".exe", ".dll"} else 0.0
+        keywords = [
+            "powershell", "cmd", "-enc", "execute", "bypass", "hidden", "obf", "base64", 
+            "curl", "wget", "| bash", "| sh", "/dev/tcp/", "nc -e", "nc -vz", "ncat", 
+            "chmod +s", "/dev/shm", "-qo-", "system(", "pty.spawn", "-exec /bin/sh", 
+            "-exec /bin/bash", "fsockopen", "tcp-connect:", "exec:/bin/", "sh -i", "socket.socket",
+            "-nop", "-noni", "-w hidden", "-windowstyle hidden", "-encodedcommand",
+            "frombase64string", "downloadstring2", "downloadfile", "invoke-expression",
+            "iex(", "iex (", "| iex", "-urlcache", "scrobj.dll", "/transfer", "process call create",
+            "delete shadows", "shadowcopy delete", "recoveryenabled no", "\\currentversion\\run", "/sc onlogon",
+            "/sc onstart", " /add", " -decode ", ".hta", ".sct", "mshta", "vssadmin", "localgroup administrators"]
 
-        # First-seen features
+        keyword_count = sum(1 for kw in keywords if kw in cmdline)
+        features["suspicious_keywords_count"] = min(keyword_count / 5, 1.0)
+
+        path = event.get("path", "").lower()
+        path_and_cmd = f"{path} {cmdline}"
+        in_drop_dir = any(d in path_and_cmd for d in self.suspicious_dirs)
+        in_programdata_root = self.programdata_root_file.search(path_and_cmd) is not None
+        features["execution_in_temp"] = 1.0 if in_drop_dir or in_programdata_root else 0.0
+        features["execution_in_system"] = 1.0 if any(d in path for d in self.system_dirs) else 0.0
+
+        parent_name = event.get("parent_name", "").lower()
+        features["is_benign_parent"] = 1.0 if parent_name in self.benign_parents else 0.0
+        features["parent_is_system_process"] = 1.0 if parent_name in {"services.exe", "csrss.exe"} else 0.0
+
+        user = event.get("user", "").upper()
+        features["is_elevated"] = 1.0 if user in {"SYSTEM", "NT AUTHORITY\\SYSTEM"} else 0.0
+        features["is_admin"] = 1.0 if "ADMIN" in user or "Administrator" in user else 0.0
+
         features["is_first_seen"] = float(event.get("is_first_seen", False))
 
-        # Operation features
-        operation = event.get("operation", "").lower()
-        features["is_suspicious_operation"] = 1.0 if operation in {"execute", "write"} else 0.0
+        filename = self._strip_version(path.replace("\\", "/").rsplit("/", 1)[-1])
+        features["filename_length"] = min(len(filename) / 100, 1.0)
+        features["has_long_extension"] = 1.0 if filename.count(".") > 1 else 0.0
 
-        # Size features
-        file_size = event.get("file_size", 0)
-        features["very_small_file"] = 1.0 if file_size < 1000 else 0.0
-        features["very_large_file"] = 1.0 if file_size > 100_000_000 else 0.0
+        features["uses_attrib_hide"] = 1.0 if ("attrib " in cmdline and ("+h" in cmdline or "+s" in cmdline)) else 0.0
+        features["uses_permission_change"] = 1.0 if ("icacls " in cmdline or "cacls " in cmdline or ("takeown" in cmdline and "/f " in cmdline)) else 0.0
+        features["deletes_recovery"] = 1.0 if ("delete shadows" in cmdline or "shadowcopy delete" in cmdline or "recoveryenabled no" in cmdline or ("bcdedit" in cmdline and "no" in cmdline)) else 0.0
+        features["creates_scheduled_task"] = 1.0 if ("schtasks" in proc_name and "/create" in cmdline) or ("schtasks" in cmdline and "/create" in cmdline) else 0.0
+        features["modifies_firewall"] = 1.0 if ("netsh " in cmdline and ("firewall" in cmdline or "advfirewall" in cmdline)) else 0.0
+        features["rundll32_ordinal_load"] = 1.0 if ("rundll32" in proc_name and ",#" in cmdline) else 0.0
+        features["exec_from_appdata"] = 1.0 if ("\\appdata\\roaming\\" in path or "\\appdata\\local\\" in path) else 0.0
+
+        lolbin_parents = {"winword.exe", "excel.exe", "outlook.exe", "powerpnt.exe", "msedge.exe", "chrome.exe", "firefox.exe", "iexplore.exe"}
+        lolbin_children = {"cmd", "powershell", "wscript", "cscript", "mshta", "rundll32", "certutil", "bitsadmin"}
+        features["lolbin_parent_chain"] = 1.0 if (parent_name in lolbin_parents and proc_name in lolbin_children) else 0.0
 
         return features
 
 def extract_dataset_features(events: List[Dict], extractor_type: str) -> pd.DataFrame:
-    """Extract features from list of events"""
-
     if extractor_type == "process":
         extractor = ProcessFeatureExtractor()
     elif extractor_type == "network":
@@ -258,4 +311,5 @@ def extract_dataset_features(events: List[Dict], extractor_type: str) -> pd.Data
         feature_list.append(features)
 
     return pd.DataFrame(feature_list)
-    
+
+

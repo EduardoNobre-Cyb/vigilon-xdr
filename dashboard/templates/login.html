@@ -5,79 +5,158 @@
     <link rel="icon" href="{{ url_for('static', filename='images/vigilon-owl.svg') }}" type="image/svg+xml">
     <link rel="alternate icon" href="{{ url_for('static', filename='images/vigilon-icon-192.png') }}" type="image/png">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/vigilon-icon-192.png') }}">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet" type="text/css"/>
-    <script src="{{ url_for('static', filename='js/login-redirect.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/login-redirect.js') }}"></script> 
   </head>
   <body>
 
     <div class="login-wrapper">
 
-      <div class="login-card">
-
-        <div class="login-header">
-          <!-- TODO: replace shield icon with Vigilon owl logo when the asset is provided. -->
-          <div class="login-shield">
-            <img src="{{ url_for('static', filename='images/vigilon-owl.svg') }}" alt="Vigilon" class="login-shield-img">
-          </div>
-          <h1 class="login-title">VIGILON</h1>
-          <p class="login-subtitle">Multi-Agent XDR Platform for Unified Log and Endpoint Threat Defense</p>
-          <div class="login-divider"></div>
+      <div class="login-hero">
+        <div class="login-hero-logo">
+          <img src="{{ url_for('static', filename='images/vigilon-owl.svg') }}" alt="Vigilon">
         </div>
+        <div class="login-hero-title">Vigilon</div>
+        <div class="login-hero-tagline">
+          Multi-Agent XDR Platform for Unified Log<br>and Endpoint Threat Defense
+        </div>
+        <div class="login-hero-divider"></div>
 
         <div class="login-prompt">
           <span class="terminal-prefix">$&gt;</span>
           <span class="terminal-text" id="terminal-text"></span>
-          <span class="terminal-cursor">█</span>
+          <span class="terminal-cursor"></span>
         </div>
 
-        <form class="login-form" id="login-form" onsubmit="handleLogin(event)">
-
-          <div class="login-field">
-            <label class="login-label" for="email">// ANALYST EMAIL</label>
-            <input
-              class="login-input"
-              type="email"
-              id="email"
-              name="email"
-              placeholder="analyst@vigilon.local"
-              autocomplete="email"
-              required
-            />
+        <div class="login-hero-features">
+          <div class="login-hero-feature">
+            <div class="feat-icon">P</div>
+            <span>Pulse process behaviour analysis</span>
           </div>
+          <div class="login-hero-feature">
+            <div class="feat-icon">N</div>
+            <span>Beacon network anomaly &amp; C2 detection</span>
+          </div>
+          <div class="login-hero-feature">
+            <div class="feat-icon">F</div>
+            <span>Spectra static binary analysis</span>
+          </div>
+          <div class="login-hero-feature">
+            <div class="feat-icon">R</div>
+            <span>Automated response coordination</span>
+          </div>
+        </div>
 
-          <div class="login-field">
-            <label class="login-label" for="password">// PASSWORD</label>
-            <div class="password-wrapper">
-              <input
-                class="login-input"
-                type="password"
-                id="password"
-                name="password"
-                placeholder="••••••••••••"
-                autocomplete="current-password"
-                required
-              />
-              <button type="button" class="eye-toggle" onclick="togglePassword('password', this)" title="Show/hide password">👁</button>
+        <div class="login-hero-version">
+          v2.0.0 <span class="online-dot"></span> SYSTEM ONLINE
+        </div>
+      </div>
+
+      <div class="login-form-side">
+
+        <div class="login-screen active" id="login-screen-1">
+          <div class="login-card">
+            <h2 style="font-family:var(--font-display);font-size:24px;font-weight:700;margin-bottom:4px;">Sign In</h2>
+            <p style="color:var(--fg-muted);font-size:13px;margin-bottom:28px;">Access your threat monitoring dashboard</p>
+
+            <form class="login-form" id="login-form" onsubmit="handleLogin(event)">
+              <div class="login-field">
+                <label class="login-label" for="email">Email Address</label>
+                <input class="login-input" type="email" id="email" name="email" placeholder="Enter your email" autocomplete="email" required/>
+              </div>
+            
+              <div class="login-field">
+                <label class="login-label" for="password">Password</label>
+                <div class="password-wrapper">
+                  <input class="login-input" type="password" id="password" name="password" placeholder="Enter your password" autocomplete="current-password" required/>
+                  <button type="button" class="eye-toggle" onclick="togglePassword('password', this)" title="Show/hide password"><span data-icon="eye"></span></button>
+                </div>
+              </div>
+
+              <div class="login-error" id="login-error" style="display:none;"></div>
+              <button class="login-btn" type="subtmit" id="login-btn"><span id="btn-text">Sign In</span></button>
+            </form>
+
+            <div style="text-align:center;margin-top:16px;">
+              <a class="login-link" onclick="showLoginScreen(2)">Forgot your password?</a>
+            </div>
+
+            <div class="login-or">or</div>
+
+            <p style="text-align:center;font-size:12px;color:var(--fg-dim);">Don't have an account? <a class="login-link" onclick="showLoginScreen(4)">Ask your admin for an invite.</a></p>
+            </p>
+          </div>
+        </div>
+
+        <div class="login-screen" id="login-screen-2">
+          <div class="login-card">
+            <div style="margin-bottom:20px;">
+              <a class="login-back" onclick="showLoginScreen(1)">&larr; Back to Sign In</a>
+            </div>
+            <h2 style="font-family:var(--font-display);font-size:24px;font-weight:700;margin-bottom:4px;">Reset Password</h2>
+            <p style="color:var(--fg-muted);font-size:13px;margin-bottom:28px;">Enter your email and we'll send you a reset link</p>
+
+            <form class="login-form" id="forgot-form" onsubmit="handleForgot(event)">
+              <div class="login-field">
+                <label class="login-label" for="forgot-email">Email Address</label>
+                <input class="login-input" type="email" id="forgot-email" placeholder="Enter your email" autocomplete="email" required/>
+              </div>
+
+              <div class="login-error" id="forgot-error" style="display:none;"></div>
+
+              <button class="login-btn" type="subtmit" id="forgot-btn">
+                <span id="forgot-btn-text">Send Reset Link</span>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="login-screen" id="login-screen-3">
+          <div class="login-card" style="text-align:center;">
+            <div class="login-info-icon">&#9993;</div>
+            <h2 style="font-family:var(--font-display);font-size:22px;font-weight:700;margin-bottom:4px;">Check Your Email</h2>
+            <p style="color:var(--fg-muted);font-size:13px;margin-bottom:20px;">We sent a password reset link to<br><strong id="forgot-email-display" style="color:var(--fg);"></strong></p>
+            <p style="color:var(--fg-dim);font-size:12px;margin-bottom:24px;">Didn't receive it? Check your spam folder or <a class="login-link" onclick="showLoginScreen(2)">try again</a></p>
+            <div style="margin-top:12px;">
+              <a class="login-back" onclick="showLoginScreen(1)">&larr; Back to Sign In</a>
             </div>
           </div>
+        </div>
 
-          <div class="login-error" id="login-error" style="display: none;"></div>
+        <div class="login-screen" id="login-screen-4">
+          <div class="login-card">
+            <div style="margin-bottom:20px;">
+              <a class="login-back" onclick="showLoginScreen(1)">&larr; Back to Sign In</a>
+            </div>
+            <h2 style="font-family:var(--font-display);font-size:24px;font-weight:700;margin-bottom:4px;">Request Access</h2>
+            <p style="color:var(--fg-muted);font-size:13px;margin-bottom:28px;">Enter your details and we'll get back to you.</p>
 
-          <button class="login-btn" type="submit" id="login-btn">
-            <span id="btn-text">[ AUTHENTICATE ]</span>
-          </button>
+            <form class="login-form" id="invite-form" onsubmit="handleRequestInvite(event)">
+              <div class="login-field">
+                <label class="login-label" for="invite-name">Your First and Last Name</label>
+                <input class="login-input" type="text" id="invite-name" placeholder="Enter your first and last name" autocomplete="name" required/>
+              </div>
 
-        </form>
+              <div class="login-field">
+                <label class="login-label" for="invite-email">Email Address</label>
+                <input class="login-input" type="email" id="invite-email" placeholder="Enter your email" autocomplete="email" required/>
+              </div>
 
-        <div class="login-footer">
-          <span class="login-version">v2.0.0</span>
-          <span class="login-status">● SYSTEM ONLINE</span>
+              <div class="login-error" id="invite-error" style="display:none;"></div>
+
+              <button class="login-btn" type="submit" id="invite-btn">
+                <span id="invite-btn-text">Send Request</span>
+              </button>
+            </form>
+          </div>
         </div>
 
       </div>
 
     </div>
 
+    <script src="{{ url_for('static', filename='js/icons.js') }}"></script>
     <script src="{{ url_for('static', filename='js/login.js') }}"></script>
 
   </body>

@@ -1,11 +1,3 @@
-"""
-Vigilon agent display names: the ONE place agent names are defined.
-
-Only human-readable names live here. Internal identifiers (agent IDs like
-"classifier_001", Redis channels, database values, module names) must NOT
-change when a display name changes.
-"""
-
 PLATFORM_NAME = "Vigilon"
 PLATFORM_TAGLINE = "Multi-Agent XDR Platform for Unified Log and Endpoint Threat Defense"
 
@@ -18,6 +10,9 @@ AGENTS = {
     "response": {"codename": "Warden", "role": "Response Coordination"},
     "endpoint": {"codename": "Sensor", "role": "Endpoint Collector"},
     "waf": {"codename": "Rampart", "role": "Web Application Firewall"},
+    "file_monitor": {"codename": "Spectra", "role": "Static File Analysis"},
+    "process_monitor": {"codename": "Pulse", "role": "Process Behaviour Analysis"},
+    "network_monitor": {"codename": "Beacon", "role": "Network Anomaly Detection"},
 }
 
 

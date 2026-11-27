@@ -1,13 +1,12 @@
-// Moved out of templates/change_password.html (was an inline <script>). Loaded as a classic
-// script so its functions stay global for the onclick="..." handlers.
 function togglePassword(inputId, btn) {
   const input = document.getElementById(inputId);
+  const icon = btn.querySelector('[data-icon]');
   if (input.type === 'password') {
     input.type = 'text';
-    btn.textContent = '🙈';
+    if (icon) { icon.dataset.icon = 'eyeOff'; icon.innerHTML = window.ICONS.eyeOff; }
   } else {
     input.type = 'password';
-    btn.textContent = '👁';
+    if (icon) { icon.dataset.icon = 'eye'; icon.innerHTML = window.ICONS.eye; }
   }
 }
 

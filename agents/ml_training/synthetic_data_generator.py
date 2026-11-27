@@ -19,33 +19,41 @@ class SyntheticDataGenerator:
 
     # Malicious process chains (attack patterns)
     MALICIOUS_CHAINS = [
-        ["explorer.exe", "svchost.exe", "powershell.exe", "cmd.exe"], # Process replacement
-        ["winword.exe", "cmd.exe", "powershell.exe"], # Office → cmd (common macro attack)
-        ["chrome.exe", "rundll32.exe"], # Browser → rundll32 (dll hijacking)
-        ["svchost.exe", "certutil.exe", "whoami.exe"], # Process impersonation
-        ["explorer.exe", "psexec.exe", "cmd.exe"], # Lateral movement
-        ["notepad.exe", "cmd.exe", "powershell.exe"], # Living-off-the-land
+        ["explorer.exe", "svchost.exe", "powershell.exe", "cmd.exe"],
+        ["winword.exe", "cmd.exe", "powershell.exe"],
+        ["chrome.exe", "rundll32.exe"],
+        ["svchost.exe", "certutil.exe", "whoami.exe"],
+        ["explorer.exe", "psexec.exe", "cmd.exe"],
+        ["notepad.exe", "cmd.exe", "powershell.exe"],
+        ["explorer.exe", "cmd.exe", "attrib.exe"],
+        ["explorer.exe", "cmd.exe", "icacls.exe"],
+        ["explorer.exe", "cmd.exe", "vssadmin.exe"],
+        ["svchost.exe", "rundll32.exe"],
+        ["explorer.exe", "schtasks.exe"],
+        ["explorer.exe", "cmd.exe", "netsh.exe"],
+        ["winword.exe", "cmd.exe", "java.exe"],
+        ["msedge.exe", "cmd.exe", "powershell.exe"],
+        ["excel.exe", "mshta.exe"],
     ]
 
     BENIGN_DESTINATIONS = [
-        ("1.1.1.1", 443),       # CloudFlare DNS over HTTPS
-        ("8.8.8.8", 443),       # Google DNS
-        ("44.55.66.77", 443),   # Generic cloud services
-        ("10.0.0.1", 22),       # Internal SSh
-        ("10.0.0.2", 3306),     # Internal database
+        ("1.1.1.1", 443),
+        ("8.8.8.8", 443),
+        ("44.55.66.77", 443),
+        ("10.0.0.1", 22),
+        ("10.0.0.2", 3306),
     ]
 
     MALICIOUS_DESTINATIONS = [
-        ("1.2.3.4", 4444),      # Known C2
-        ("5.6.7.8", 5555),      # Known C2
-        ("9.10.11.12", 8888),   # Suspicious port
-        ("192.168.1.100", 3389),    # RDP (lateral movement)
-        ("169.254.0.1", 9999),  # APIPA (suspicious)
+        ("1.2.3.4", 4444),
+        ("5.6.7.8", 5555),
+        ("9.10.11.12", 8888),
+        ("192.168.1.100", 3389),
+        ("169.254.0.1", 9999),
     ]
 
     @staticmethod
     def generate_benign_processes(count: int = 5000) -> List[Dict]:
-        """Generate benign process execution events"""
         events = []
 
         for _ in range(count):
@@ -81,7 +89,6 @@ class SyntheticDataGenerator:
 
     @staticmethod
     def generate_malicious_processes(count: int = 5000) -> List[Dict]:
-        """Generate malicious process execution events"""
         events = []
 
         for _ in range(count):
@@ -92,20 +99,64 @@ class SyntheticDataGenerator:
 
             # Malicious command line (often obfuscated)
             obfuscation = "".join(random.choices(string.ascii_letters + string.digits, k=50))
-            cmdline_options = [
-                f"C:\\Windows\\System32\\{process_name} {obfuscation}",
-                f"{process_name} -enc {obfuscation}",
-                f"cmd.exe /c powershell -WindowStyle Hidden {obfuscation}",
-                f"{process_name} -noprofile -noninteractive {obfuscation}",
+            random_name = "".join(random.choices(string.ascii_lowercase, k=8))
+
+            if process_name == "attrib.exe":
+                target = random.choice([
+                    f"C:\\Users\\{random_name}\\Desktop\\{random_name}.exe",
+                    f"C:\\Users\\{random_name}\\Desktop",
+                    f"C:\\Users\\{random_name}\\Documents\\{random_name}.exe"
+                ])
+                flags = random.choice(["+s +h", "+h", "+s +h +r"])
+                cmdline = f'attrib "{target}" {flags}'
+            elif process_name == "icacls.exe":
+                target = random.choice([".", "C:\\Users", f"C:\\Users\\{random_name}"])
+                cmdline = f'icacls "{target}" /grant Everyone:F /T /C /Q'
+            elif process_name == "vssadmin.exe":
+                cmdline = "vssadmin delete shadows /all /quiet"
+            elif process_name == "netsh.exe":
+                port = random.choice(["4444", "8080", "5555", "1337"])
+                cmdline = random.choice([
+                    f"netsh firewall add allowedprogram C:\\Users\\{random_name}\\server.exe {random_name} ENABLED",
+                    f'netsh advfirewall firewall add rule name="{random_name}" dir=in action=allow protocol=TCP localport={port}',
+                ])
+            elif process_name == "schtasks.exe":
+                task_name = random.choice(["rhaegal", "drogon", "WindowsUpdate", random_name])
+                cmdline = random.choice([
+                    f'schtasks /Create /RU SYSTEM /SC ONSTART /TN {task_name} /TR "C:\\Users\\{random_name}\\AppData\\Roaming\\{random_name}.exe"',
+                ])
+            elif process_name == "rundll32.exe":
+                dll_name = random.choice(["infpub.dat", f"{random_name}.dll", f"{random_name}.dat"])
+                ordinal = random.randint(1, 15)
+                cmdline = f"C:\\Windows\\System32\\rundll32.exe C:\\Windows\\{dll_name},#{ordinal}"
+            elif process_name == "java.exe":
+                jar_name = "".join(random.choices(string.ascii_letters, k=12)) + ".jar"
+                cmdline = f'java.exe -jar "C:\\Users\\{random_name}\\AppData\\Roaming\\{jar_name}"'
+            elif process_name == "mshta.exe":
+                cmdline = f'mshta.exe "C:\\Users\\{random_name}\\AppData\\Local\\Temp\\{random_name}.hta"'
+            else:
+                cmdline_options = [
+                    f"C:\\Windows\\System32\\{process_name} {obfuscation}",
+                    f"{process_name} -enc {obfuscation}",
+                    f"cmd.exe /c powershell -WindowStyle Hidden {obfuscation}",
+                    f"{process_name} -noprofile -noninteractive {obfuscation}",
+                ]
+                cmdline = random.choice(cmdline_options)
+
+            appdata_path = f"C:\\Users\\{random_name}\\AppData\\Roaming\\{process_name}"
+            path_options = [
+                f"C:\\Temp\\{process_name}",
+                f"C:\\ProgramData\\{process_name}",
+                appdata_path,
+                f"C:\\Windows\\System32\\{process_name}",
+                f"C:\\Users\\{random_name}\\Desktop\\{process_name}",
             ]
-            cmdline = random.choice(cmdline_options)
 
             event = {
                 "pid": random.randint(1000, 100000),
                 "ppid": random.randint(1000, 100000),
                 "name": process_name,
-                "path": f"C:\\{random.choice(["Temp", "ProgramData", "AppData"])}\\{process_name}", # Suspicious location
-                "command_line": cmdline,
+                "path": random.choice(path_options),
                 "parent_name": parent_name,
                 "user": random.choice(["Administrator", "Guest"]),
                 "create_time": (datetime.now()- timedelta(hours=random.randint(1, 168))).timestamp(),

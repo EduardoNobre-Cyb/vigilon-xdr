@@ -1,6 +1,3 @@
-// Moved out of templates/dashboard.html (was an inline <script>). Loaded as a classic
-// script so its functions stay global for the onclick="..." handlers.
-// Fetch and display logs
 async function loadLogs() {
   const response = await authFetch("/api/logs");
   const data = await response.json();
@@ -77,7 +74,7 @@ async function loadAnalysts() {
         <td class="analyst-edit-cell">
           <button onclick="openEditModal(${analyst.id}, '${escapedName}', '${escapedEmail}', '${escapedRole}', '${escapedThreshold}', ${analyst.active})"
             class="analyst-edit-btn">
-            ✏️ Edit
+            <span data-icon="edit"></span>
           </button>
         </td>
       </tr>`;
@@ -85,6 +82,10 @@ async function loadAnalysts() {
 
     html += `</tbody></table>`;
     container.innerHTML = html;
+    container.querySelectorAll('[data-icon]').forEach(el => {
+      const svg = window.ICONS[el.dataset.icon];
+      if (svg) el.innerHTML = svg;
+    });
   } catch (error) {
     console.error("Failed to load analysts:", error);
     container.innerHTML = "<p>Failed to load analysts data</p>";

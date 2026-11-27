@@ -136,8 +136,8 @@ async function fetchPendingModelsForAgent(agentId) {
 
 function populateModelReviewNotification(section, agentId, activeModel, pendingModel) {
   let html = `
-    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-top: 1px solid #00ff00; margin-top: 10px;">
-      <div style="color: #00ff00; font-size: 12px; animation: pulse 1.5s infinite;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-top: 1px solid #7c6bf0; margin-top: 10px;">
+      <div style="color: #7c6bf0; font-size: 12px; animation: pulse 1.5s infinite;">
         ● New Model Pending: ${pendingModel.version}
       </div>
       <button onclick="showModelComparisonModal('${agentId}', ${pendingModel.id}, ${activeModel ? activeModel.id : "null"})"
@@ -173,16 +173,16 @@ function showModelComparisonModal(agentId, pendingModelId, activeModelId) {
 
   // Populate modal with comparison table
   modal.innerHTML = `
-    <div style="background-color: #1a1a1a; border: 2px solid #00ff00; padding: 20px; width: 80%; max-height: 80vh; overflow-y: auto; color: #00ff00; font-family: monospace; display: flex; flex-direction: column; position: relative;">
+    <div style="background-color: #16132d; border: 2px solid #2d2855; padding: 20px; width: 80%; max-height: 80vh; overflow-y: auto; color: #e0ddf0; font-family: monospace; display: flex; flex-direction: column; position: relative;">
 
       <!-- Close Button (X) in Top Right -->
       <button onclick="document.getElementById('model-comparison-modal-${agentId}').style.display='none'"
-              style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: #00ff00; font-size: 24px; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; hover: {opacity: 0.8;}">
+              style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: #9590b8; font-size: 24px; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; hover: {opacity: 0.8;}">
         ✕
       </button>
 
       <!-- Header -->
-      <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #00ff00; padding-right: 40px;">
+      <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #2d2855; padding-right: 40px;">
         <div style="font-size: 16px; font-weight: bold;">Model Comparison: ${agentId}</div>
       </div>
 
@@ -192,7 +192,7 @@ function showModelComparisonModal(agentId, pendingModelId, activeModelId) {
       </div>
 
       <!-- Buttons: Approve (left) | Reject (right) -->
-      <div style="display: flex; justify-content: flex-start; gap: 20px; padding-top: 15px; border-top: 1px solid #00ff00;">
+      <div style="display: flex; justify-content: flex-start; gap: 20px; padding-top: 15px; border-top: 1px solid #2d2855;">
         <button onclick="approveModel(${pendingModelId}, '${agentId}')"
                 class="btn-approve"
                 style="flex: 0 0 auto;">
@@ -222,10 +222,10 @@ function showModelComparisonModal(agentId, pendingModelId, activeModelId) {
 
       let tableHTML = `
       <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-        <tr style="background-color: rgba(0, 255, 0, 0.1); border-bottom: 1px solid #00ff00;">
-          <th style="padding: 8px; text-align: left; color: #00ff00;">Metric</th>
+        <tr style="background-color: rgba(124,107,240,0.1); border-bottom: 1px solid #2d2855;">
+          <th style="padding: 8px; text-align: left; color: #7c6bf0;">Metric</th>
           <th style="padding: 8px; text-align: left; color: #888;">${activeModel ? "Current" : "N/A"}</th>
-          <th style="padding: 8px; text-align: left; color: #00ff00; font-weight: bold;">New</th>
+          <th style="padding: 8px; text-align: left; color: #7c6bf0; font-weight: bold;">New</th>
           <th style="padding: 8px; text-align: center; color: #ffff00;">Change</th>
         </tr>
     `;
@@ -239,7 +239,7 @@ function showModelComparisonModal(agentId, pendingModelId, activeModelId) {
           if (!oldVal || typeof newVal !== "number" || typeof oldVal !== "number")
             return "—";
           const change = ((newVal - oldVal) * 100).toFixed(1);
-          const color = change > 0 ? "#00ff00" : change < 0 ? "#ff0000" : "#888";
+          const color = change > 0 ? "#2ecc71" : change < 0 ? "#e74c3c" : "#888";
           return `<span style="color: ${color};">${change > 0 ? "+" : ""}${change}%</span>`;
         }
 
@@ -255,9 +255,9 @@ function showModelComparisonModal(agentId, pendingModelId, activeModelId) {
           const oldVal = activeModel ? activeModel[metric.key] : null;
           tableHTML += `
           <tr style="border-bottom: 1px solid #333;">
-            <td style="padding: 8px; color: #00ff00; font-weight: bold;">${metric.label}</td>
+            <td style="padding: 8px; color: #7c6bf0; font-weight: bold;">${metric.label}</td>
             <td style="padding: 8px; color: #888;">${oldVal !== null ? formatMetric(oldVal) : "N/A"}</td>
-            <td style="padding: 8px; color: #00ff00;">${formatMetric(newVal)}</td>
+            <td style="padding: 8px; color: #7c6bf0;">${formatMetric(newVal)}</td>
             <td style="padding: 8px; text-align: center;">${diff(newVal, oldVal)}</td>
           </tr>
         `;
@@ -266,8 +266,8 @@ function showModelComparisonModal(agentId, pendingModelId, activeModelId) {
         // Per-class recalls
         if (pendingModel.recall_per_class) {
           tableHTML += `
-          <tr style="background-color: rgba(0, 255, 0, 0.1); border-bottom: 1px solid #00ff00;">
-            <td colspan="4" style="padding: 8px; color: #00ff00; font-weight: bold;">Per-Class Recall</td>
+          <tr style="background-color: rgba(124,107,240,0.1); border-bottom: 1px solid #2d2855;">
+            <td colspan="4" style="padding: 8px; color: #7c6bf0; font-weight: bold;">Per-Class Recall</td>
           </tr>
         `;
 
@@ -279,7 +279,7 @@ function showModelComparisonModal(agentId, pendingModelId, activeModelId) {
             <tr style="border-bottom: 1px solid #333;">
               <td style="padding: 8px; color: #888;">└─ ${threat}</td>
               <td style="padding: 8px; color: #888;">${oldRecall ? formatMetric(oldRecall) : "N/A"}</td>
-              <td style="padding: 8px; color: #00ff00;">${formatMetric(recall)}</td>
+              <td style="padding: 8px; color: #7c6bf0;">${formatMetric(recall)}</td>
               <td style="padding: 8px; text-align: center;">${diff(recall, oldRecall)}</td>
             </tr>
           `;
@@ -348,16 +348,16 @@ function showDeploymentConfirmationModal(modelId, agentId) {
   `;
 
   deployModal.innerHTML = `
-    <div style="background-color: #1a1a1a; border: 2px solid #00ff00; padding: 30px; width: 500px; color: #00ff00; font-family: monospace; display: flex; flex-direction: column; gap: 15px; border-radius: 5px;">
+    <div style="background-color: #16132d; border: 2px solid #2d2855; padding: 30px; width: 500px; color: #e0ddf0; font-family: monospace; display: flex; flex-direction: column; gap: 15px; border-radius: 5px;">
 
       <!-- Header -->
-      <div style="font-size: 18px; font-weight: bold; border-bottom: 1px solid #00ff00; padding-bottom: 10px;">
+      <div style="font-size: 18px; font-weight: bold; border-bottom: 1px solid #2d2855; padding-bottom: 10px;">
         🚀 Deploy Model
       </div>
 
       <!-- Message -->
       <div style="font-size: 13px; line-height: 1.6;">
-        Model has been <span style="color: #00ff00; font-weight: bold;">✅ APPROVED</span> successfully!
+        Model has been <span style="color: #2ecc71; font-weight: bold;">✅ APPROVED</span> successfully!
         <br><br>
         Would you like to <span style="color: #ffff00;">deploy</span> this model now?
         <br><br>
@@ -367,7 +367,7 @@ function showDeploymentConfirmationModal(modelId, agentId) {
       </div>
 
       <!-- Buttons: Deploy (green) | Cancel (red) -->
-      <div style="display: flex; gap: 10px; justify-content: flex-end; padding-top: 10px; border-top: 1px solid #00ff00;">
+      <div style="display: flex; gap: 10px; justify-content: flex-end; padding-top: 10px; border-top: 1px solid #2d2855;">
         <button 
           onclick="closeDeploymentConfirmation('${agentId}')"
           style="padding: 10px 20px; background-color: #333; color: #ff0000; border: 1px solid #ff0000; cursor: pointer; font-weight: bold; border-radius: 3px; font-family: monospace; font-size: 12px;">
@@ -375,7 +375,7 @@ function showDeploymentConfirmationModal(modelId, agentId) {
         </button>
         <button 
           onclick="deployModelNow(${modelId}, '${agentId}')"
-          style="padding: 10px 20px; background-color: #00ff00; color: #000; border: none; cursor: pointer; font-weight: bold; border-radius: 3px; font-family: monospace; font-size: 12px;">
+          style="padding: 10px 20px; background-color: #7c6bf0; color: #fff; border: none; cursor: pointer; font-weight: bold; border-radius: 3px; font-family: monospace; font-size: 12px;">
           Deploy Now
         </button>
       </div>
@@ -420,17 +420,17 @@ async function deployModelNow(modelId, agentId) {
         `deploy-confirmation-modal-${agentId}`,
       );
       deployModal.innerHTML = `
-        <div style="background-color: #1a1a1a; border: 2px solid #00ff00; padding: 30px; width: 500px; color: #00ff00; font-family: monospace; text-align: center; border-radius: 5px;">
+        <div style="background-color: #16132d; border: 2px solid #2d2855; padding: 30px; width: 500px; color: #e0ddf0; font-family: monospace; text-align: center; border-radius: 5px;">
           <div style="font-size: 24px; margin-bottom: 15px;">✅</div>
           <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Model Deployed Successfully!</div>
           <div style="font-size: 12px; color: #888; margin-bottom: 20px;">
             Agents are now using the new model.
             <br><br>
-            <span style="color: #00ff00;">Next inference will use updated model</span>
+            <span style="color: #2ecc71;">Next inference will use updated model</span>
           </div>
-          <button 
+          <button
             onclick="closeDeploymentConfirmation('${agentId}')"
-            style="padding: 10px 30px; background-color: #00ff00; color: #000; border: none; cursor: pointer; font-weight: bold; border-radius: 3px; font-family: monospace; font-size: 12px;">
+            style="padding: 10px 30px; background-color: #7c6bf0; color: #fff; border: none; cursor: pointer; font-weight: bold; border-radius: 3px; font-family: monospace; font-size: 12px;">
             Close
           </button>
         </div>
@@ -446,7 +446,7 @@ async function deployModelNow(modelId, agentId) {
         `deploy-confirmation-modal-${agentId}`,
       );
       deployModal.innerHTML = `
-        <div style="background-color: #1a1a1a; border: 2px solid #ff0000; padding: 30px; width: 500px; color: #ff0000; font-family: monospace; text-align: center; border-radius: 5px;">
+        <div style="background-color: #16132d; border: 2px solid #ff0000; padding: 30px; width: 500px; color: #ff0000; font-family: monospace; text-align: center; border-radius: 5px;">
           <div style="font-size: 24px; margin-bottom: 15px;">❌</div>
           <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Deployment Failed</div>
           <div style="font-size: 12px; margin-bottom: 20px;">
@@ -466,7 +466,7 @@ async function deployModelNow(modelId, agentId) {
       `deploy-confirmation-modal-${agentId}`,
     );
     deployModal.innerHTML = `
-      <div style="background-color: #1a1a1a; border: 2px solid #ff0000; padding: 30px; width: 500px; color: #ff0000; font-family: monospace; text-align: center; border-radius: 5px;">
+      <div style="background-color: #16132d; border: 2px solid #ff0000; padding: 30px; width: 500px; color: #ff0000; font-family: monospace; text-align: center; border-radius: 5px;">
         <div style="font-size: 24px; margin-bottom: 15px;">❌</div>
         <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Error</div>
         <div style="font-size: 12px; margin-bottom: 20px;">
@@ -688,10 +688,10 @@ function renderDetectionPage(page) {
       ? "-"
       : `${dt.toLocaleDateString()}<br><small style="color:#888;">${dt.toLocaleTimeString()}</small>`;
     const sourceLabel = d.source || "EDR Telemetry";
-    const detailsLabel = d.data.name || d.data.process_name || '-';
+    const detailsLabel = d.data.name || d.data.process_name || d.data.file_name || '-';
     const osVersion = d.os_version && d.os_version !== "undefined" ? d.os_version : "-";
     const eventTypeRaw = String(d.event_type || "").toLowerCase();
-    const eventTypeShort = eventTypeRaw === "process" ? "P" : eventTypeRaw === "network" ? "N" : "?";
+    const eventTypeShort = eventTypeRaw === "process" ? "P" : eventTypeRaw === "network" ? "N" : eventTypeRaw === "file" ? "F" : "?";
     const eventTypeTitle = eventTypeRaw || "unknown";
 
     const cls = d.classification;
@@ -749,7 +749,7 @@ function openEDRActionsModal(osType = null) {
   edrActionsState.telemetryCategory = "All";
   edrActionsState.selectedTelemetryIndex = null;
   edrActionsState.agentActions = [];
-  document.getElementById("edr-actions-content").innerHTML = '<div style="padding:16px; border:1px dashed #1f3b23; border-radius:6px; color:#64748b;">Loading agents...</div>';
+  document.getElementById("edr-actions-content").innerHTML = '<div style="padding:16px; border:1px dashed #2d2855; border-radius:6px; color:#64748b;">Loading agents...</div>';
   document.getElementById("edr-actions-agent-list").innerHTML = '<div style="color:#64748b; font-size:12px;">Loading online agents...</div>';
   document.getElementById("edr-actions-telemetry-list").innerHTML = '<div style="color:#64748b; font-size:12px;">Select an online agent.</div>';
   document.getElementById("edr-actions-telemetry-count").textContent = "0 events";
@@ -775,19 +775,19 @@ async function loadEDRActionsModalData() {
     if (agents.length === 0) {
       document.getElementById("edr-actions-agent-list").innerHTML = '<div style="color:#64748b; font-size:12px;">No online agents available.</div>';
       document.getElementById("edr-actions-telemetry-list").innerHTML = '<div style="color:#64748b; font-size:12px;">No online agents are currently connected.</div>';
-      document.getElementById("edr-actions-content").innerHTML = '<div style="padding:16px; border:1px dashed #1f3b23; border-radius:6px; color:#64748b;">No online agents are currently connected.</div>';
+      document.getElementById("edr-actions-content").innerHTML = '<div style="padding:16px; border:1px dashed #2d2855; border-radius:6px; color:#64748b;">No online agents are currently connected.</div>';
       return;
     }
 
     document.getElementById("edr-actions-agent-list").innerHTML = agents.map((agent) => `
       <button type="button"
         onclick="selectEDRAgent('${agent.agent_id}')"
-        style="width:100%; text-align:left; background:${edrActionsState.selectedAgentId === agent.agent_id ? '#10321a' : '#0f1729'}; border:1px solid ${edrActionsState.selectedAgentId === agent.agent_id ? '#00ff00' : '#1f3b23'}; color:#00ff00; padding:10px 12px; border-radius:6px; cursor:pointer; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+        style="width:100%; text-align:left; background:${edrActionsState.selectedAgentId === agent.agent_id ? 'rgba(124,107,240,0.2)' : '#1d1a38'}; border:1px solid ${edrActionsState.selectedAgentId === agent.agent_id ? '#7c6bf0' : '#2d2855'}; color:#e0ddf0; padding:10px 12px; border-radius:6px; cursor:pointer; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
         <span>
           <strong style="display:block; font-size:12px;">${escapeHTML(agent.hostname)}</strong>
           <small style="color:#8cb6ff;">${escapeHTML(agent.os_type)} • ${escapeHTML(agent.agent_id.substring(0, 8))}</small>
         </span>
-        <span style="font-size:11px; color:#00ff00;">Online</span>
+        <span style="font-size:11px; color:#2ecc71;">Online</span>
       </button>
     `).join("");
 
@@ -810,12 +810,12 @@ async function selectEDRAgent(agentId) {
   document.getElementById("edr-actions-agent-list").innerHTML = edrActionsState.agents.map((agent) => `
     <button type="button"
       onclick="selectEDRAgent('${agent.agent_id}')"
-      style="width:100%; text-align:left; background:${agent.agent_id === agentId ? '#10321a' : '#0f1729'}; border:1px solid ${agent.agent_id === agentId ? '#00ff00' : '#1f3b23'}; color:#00ff00; padding:10px 12px; border-radius:6px; cursor:pointer; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+      style="width:100%; text-align:left; background:${agent.agent_id === agentId ? 'rgba(124,107,240,0.2)' : '#1d1a38'}; border:1px solid ${agent.agent_id === agentId ? '#7c6bf0' : '#2d2855'}; color:#e0ddf0; padding:10px 12px; border-radius:6px; cursor:pointer; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
       <span>
         <strong style="display:block; font-size:12px;">${escapeHTML(agent.hostname)}</strong>
         <small style="color:#8cb6ff;">${escapeHTML(agent.os_type)} • ${escapeHTML(agent.agent_id.substring(0, 8))}</small>
       </span>
-      <span style="font-size:11px; color:#00ff00;">Online</span>
+      <span style="font-size:11px; color:#2ecc71;">Online</span>
     </button>
   `).join("");
 
@@ -837,7 +837,7 @@ async function selectEDRAgent(agentId) {
 
     if (!telemetry.length) {
       document.getElementById("edr-actions-telemetry-list").innerHTML = `
-        <div style="padding:16px; border:1px dashed #1f3b23; border-radius:6px; color:#64748b;">
+        <div style="padding:16px; border:1px dashed #2d2855; border-radius:6px; color:#64748b;">
           No events from this agent.
         </div>
       `;
@@ -897,7 +897,7 @@ function updateTelemetryCategoryControls() {
   document.querySelectorAll("#edr-actions-telemetry-categories [data-telemetry-category]").forEach((button) => {
     const active = button.dataset.telemetryCategory === edrActionsState.telemetryCategory;
     button.setAttribute("aria-selected", String(active));
-    button.style.background = active ? "rgba(217,184,255,0.14)" : "#0D0D0D";
+    button.style.background = active ? "rgba(217,184,255,0.14)" : "#1d1a38";
     button.style.borderColor = active ? "#D9B8FF" : "rgba(217,184,255,0.45)";
     button.style.color = active ? "#D9B8FF" : "#8cb6ff";
   });
@@ -910,7 +910,7 @@ function renderTelemetryList(agent, selectedIndex = edrActionsState.selectedTele
   updateTelemetryCategoryControls();
 
   if (!entries.length) {
-    document.getElementById("edr-actions-telemetry-list").innerHTML = `<div style="padding:16px; border:1px dashed #1f3b23; border-radius:6px; color:#64748b;">No ${escapeHTML(edrActionsState.telemetryCategory.toLowerCase())} events from this agent.</div>`;
+    document.getElementById("edr-actions-telemetry-list").innerHTML = `<div style="padding:16px; border:1px dashed #2d2855; border-radius:6px; color:#64748b;">No ${escapeHTML(edrActionsState.telemetryCategory.toLowerCase())} events from this agent.</div>`;
     return;
   }
 
@@ -943,7 +943,7 @@ function renderTelemetryPickerCard(agent, event, eventIndex, isSelected = false)
   return `
     <button type="button"
       onclick="selectEDRTelemetry(${eventIndex})"
-      style="width:100%; text-align:left; background:${isSelected ? 'rgba(217,184,255,0.14)' : '#0D0D0D'}; border:1px solid ${isSelected ? '#D9B8FF' : 'rgba(217,184,255,0.45)'}; color:#D9B8FF; padding:10px 12px; border-radius:6px; cursor:pointer; display:flex; flex-direction:column; gap:6px;">
+      style="width:100%; text-align:left; background:${isSelected ? 'rgba(217,184,255,0.14)' : '#1d1a38'}; border:1px solid ${isSelected ? '#D9B8FF' : 'rgba(217,184,255,0.45)'}; color:#D9B8FF; padding:10px 12px; border-radius:6px; cursor:pointer; display:flex; flex-direction:column; gap:6px;">
       <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
         <strong style="font-size:12px; color:#8cb6ff;">${escapeHTML(title)}</strong>
         <span style="font-size:11px; color:#64748b;">${escapeHTML(time)}</span>
@@ -1003,11 +1003,11 @@ function renderTelemetryDetailPanel(event, agentId, eventIndex = 0) {
   const confidenceLabel = confidence !== undefined && confidence !== null ? `${Math.round(Number(confidence) * 100)}%` : "n/a";
 
   return `
-    <div style="border:1px solid #1f3b23; border-radius:8px; padding:14px; background:#0b1117; display:flex; flex-direction:column; gap:12px; margin-bottom:12px;">
+    <div style="border:1px solid #2d2855; border-radius:8px; padding:14px; background:#16132d; display:flex; flex-direction:column; gap:12px; margin-bottom:12px;">
       <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
         <div>
           <div style="font-size:13px; color:#8cb6ff; margin-bottom:4px;">${escapeHTML(title || 'Telemetry Event')}</div>
-          <div style="font-size:12px; color:#00ff00;">${escapeHTML(detail)}</div>
+          <div style="font-size:12px; color:#e0ddf0;">${escapeHTML(detail)}</div>
         </div>
         <div style="text-align:right; font-size:11px; color:#64748b; white-space:nowrap;">
           <div>${escapeHTML(severity)}</div>
@@ -1015,20 +1015,20 @@ function renderTelemetryDetailPanel(event, agentId, eventIndex = 0) {
           <div>${escapeHTML(timestamp)}</div>
         </div>
       </div>
-      <pre style="margin:0; padding:10px; border:1px solid #1f3b23; border-radius:6px; background:#081017; color:#8cb6ff; font-size:11px; white-space:pre-wrap; word-break:break-word;">${escapeHTML(JSON.stringify(payload, null, 2))}</pre>
+      <pre style="margin:0; padding:10px; border:1px solid #2d2855; border-radius:6px; background:#0e0b1e; color:#8cb6ff; font-size:11px; white-space:pre-wrap; word-break:break-word;">${escapeHTML(JSON.stringify(payload, null, 2))}</pre>
       <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
         ${actions.length ? actions.map((action, actionIndex) => `
           <button type="button" onclick="dispatchTelemetryAction('${agentId}', ${eventIndex}, ${actionIndex})"
-            style="background:#00331a; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:4px; cursor:pointer; font-family:inherit; font-size:12px;">
+            style="background:rgba(124,107,240,0.15); border:1px solid #7c6bf0; color:#7c6bf0; padding:8px 10px; border-radius:4px; cursor:pointer; font-family:inherit; font-size:12px;">
             ${escapeHTML(action.label)}
           </button>
         `).join("") : '<span style="color:#64748b; font-size:12px;">No direct response actions available for this telemetry event.</span>'}
       </div>
       ${relatedActions.length ? `
-        <div style="margin-top:2px; padding-top:12px; border-top:1px solid #1f3b23;">
+        <div style="margin-top:2px; padding-top:12px; border-top:1px solid #2d2855;">
           <div style="font-size:11px; color:#8cb6ff; margin-bottom:8px;">Recent Related Actions</div>
           ${relatedActions.slice(0, 5).map((action) => `
-            <div style="padding:8px 10px; margin-bottom:6px; border:1px solid #1f3b23; border-radius:6px; background:#0f1729; display:flex; flex-direction:column; gap:4px;">
+            <div style="padding:8px 10px; margin-bottom:6px; border:1px solid #2d2855; border-radius:6px; background:#1d1a38; display:flex; flex-direction:column; gap:4px;">
               <div style="display:flex; justify-content:space-between; gap:10px; font-size:11px;">
                 <span>${escapeHTML(action.action_type)}</span>
                 <span>${escapeHTML(action.status)}</span>
@@ -1183,4 +1183,143 @@ refreshEDRAgents();
 connectEDRLiveUpdates();
 
 setInterval(refreshEDRAgents, 30000);
+
+// --- Quarantine Modal ---
+
+function openQuarantineModal() {
+  const modal = document.getElementById("quarantine-modal");
+  modal.style.display = "flex";
+  refreshQuarantine();
+}
+
+function closeQuarantineModal() {
+  document.getElementById("quarantine-modal").style.display = "none";
+}
+
+document.getElementById("quarantine-modal").addEventListener("click", function(e) {
+  if (e.target === this) closeQuarantineModal();
+});
+
+function refreshQuarantine() {
+  const token = localStorage.getItem("auth_token");
+  fetch("/api/quarantine", {
+    headers: { "Authorization": "Bearer " + token },
+  })
+    .then(r => r.json())
+    .then(files => {
+      const tbody = document.getElementById("quarantine-tbody");
+      const empty = document.getElementById("quarantine-empty");
+      const badge = document.getElementById("quarantine-badge");
+
+      if (badge) {
+        badge.textContent = files.length;
+        badge.style.display = files.length > 0 ? "inline-block" : "none";
+      }
+
+      if (!files.length) {
+        tbody.innerHTML = "";
+        empty.style.display = "block";
+        return;
+      }
+      empty.style.display = "none";
+
+      tbody.innerHTML = files.map(f => {
+        const name = escapeHTML(f.original_name || "unknown");
+        const sensor = escapeHTML(f.sensor || "Spectra");
+        const score = f.score ? parseFloat(f.score).toFixed(2) : "—";
+        const time = f.quarantined_at
+          ? new Date(f.quarantined_at).toLocaleString("en-GB", {
+              day: "2-digit", month: "2-digit", year: "2-digit",
+              hour: "2-digit", minute: "2-digit",
+            })
+          : "—";
+        const sizeKB = f.file_size ? (f.file_size / 1024).toFixed(1) + " KB" : "—";
+        const agent = escapeHTML(f.hostname || f.os_type || "—");
+        const idEsc = escapeHTML(f.id || "");
+
+        const scoreColor = parseFloat(f.score) >= 0.95 ? "#f87171" : "#fbbf24";
+
+        return `<tr>
+          <td title="${escapeHTML(f.path || "")}">${name}</td>
+          <td>${sensor}</td>
+          <td style="color:${scoreColor}; font-weight:600;">${score}</td>
+          <td>${time}</td>
+          <td>${sizeKB}</td>
+          <td>${agent}</td>
+          <td style="display:flex; gap:6px;">
+            <button class="btn-edr-sm" style="color:#34d399;" onclick="restoreQuarantined('${idEsc}')">Restore</button>
+            <button class="btn-edr-sm" style="color:#f87171;" onclick="deleteQuarantined('${idEsc}')">Delete</button>
+          </td>
+        </tr>`;
+      }).join("");
+    })
+    .catch(() => {
+      document.getElementById("quarantine-tbody").innerHTML =
+        '<tr><td colspan="7" style="color:#f87171;">Failed to load quarantine</td></tr>';
+    });
+}
+
+function restoreQuarantined(id) {
+  if (!confirm("Restore this file from quarantine?")) return;
+  const token = localStorage.getItem("auth_token");
+  fetch("/api/quarantine/restore", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ id: id }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        alert("Restore failed: " + data.error);
+      } else {
+        refreshQuarantine();
+      }
+    })
+    .catch(() => alert("Restore request failed"));
+}
+
+function deleteQuarantined(id) {
+  if (!confirm("Permanently delete this quarantined file? This cannot be undone.")) return;
+  const token = localStorage.getItem("auth_token");
+  fetch("/api/quarantine/delete", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ id: id }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        alert("Delete failed: " + data.error);
+      } else {
+        refreshQuarantine();
+      }
+    })
+    .catch(() => alert("Delete request failed"));
+}
+
+// Load quarantine badge count on page load
+refreshQuarantineBadge();
+setInterval(refreshQuarantineBadge, 30000);
+
+function refreshQuarantineBadge() {
+  const token = localStorage.getItem("auth_token");
+  fetch("/api/quarantine", {
+    headers: { "Authorization": "Bearer " + token },
+  })
+    .then(r => r.json())
+    .then(files => {
+      const badge = document.getElementById("quarantine-badge");
+      if (badge) {
+        badge.textContent = files.length;
+        badge.style.display = files.length > 0 ? "inline-block" : "none";
+      }
+    })
+    .catch(() => {});
+}
 

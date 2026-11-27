@@ -355,6 +355,7 @@ class Analyst(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
     email = Column(String(255), unique=True, nullable=False)
+    contact_email = Column(String(255), nullable=True)
     role = Column(
         String(50), default="analyst"
     )  # analyst, senior_analyst, manager, admin
@@ -369,6 +370,8 @@ class Analyst(Base):
     notification_threshold = Column(
         String(20), default="medium"
     )  # low, medium, high, critical
+    password_reset_token = Column(String(255), nullable=True)
+    password_reset_expires = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -506,9 +509,8 @@ class Model(Base):
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
-
+    
 class Agent(Base):
-    """Represents an endpoint agent connected to the platform"""
     __tablename__ = "agents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)

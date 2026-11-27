@@ -1178,10 +1178,87 @@ class ThreatClassificationAgent:
         else:
             return "Informational"
 
-    def _extract_mitre_tactic(self, description):
+    def _map_edr_mitre_tactic(self, description_lower: str) -> str:
+        has_rwx_sections = "hint:memory_rwx_anomaly" in description_lower
+        has_reverse_shell = "hint:reverse_shell_pattern" in description_lower
+        has_nc = "hint:nc_usage" in description_lower
+        has_download = "hint:download_exec_chain" in description_lower
+        has_ephemeral = "hint:ephemeral_exec_path" in description_lower
+        has_high_risk_port = "hint:high_risk_port" in description_lower
+        has_file_in_temp = "hint:file_in_temp_dir" in description_lower
+        has_high_entropy = "hint:high_entropy_binary" in description_lower
+        has_wx_sections = "hint:wx_sections" in description_lower
+        has_suspicious_imports = "hint:many_suspicious_imports" in description_lower
 
-        # Extract or map MITRE tactic ID from threat description.
-        # First tries regex extraction, then falls back to intelligent mapping.
+        if has_rwx_sections:
+            return "TA0005"
+
+        if has_reverse_shell:
+            return "TA0011"
+
+        if has_nc and has_high_risk_port:
+            return "TA0011"
+
+        if has_download:
+            return "TA0001"
+
+        if has_nc:
+            return "TA0002"
+
+        if has_high_entropy and has_wx_sections:
+            return "TA0001"
+        if has_suspicious_imports:
+            return "TA0002"
+        if has_file_in_temp:
+            return "TA0001"
+
+        proc = ""
+        if "proc=" in description_lower:
+            proc = description_lower.split("proc=")[1].split(" ")[0]
+
+        defense_evasion_procs = {
+            "netsh.exe", "netsh", "bcdedit.exe", "bcdedit", "vssadmin.exe",
+            "vssadmin", "wevtutil.exe", "wevtutil", "attrib.exe", "attrib",
+            "icacls.exe", "icacls",
+        }
+        discovery_procs = {
+            "whoami.exe", "whoami", "ipconfig.exe", "ipconfig", "systeminfo.exe", "systeminfo",
+            "tasklist.exe", "tasklist", "net.exe", "net", "net1.exe", "net1", "hostname.exe",
+            "hostname", "nmap", "masscan", "nltest.exe", "nltest", "dsquery.exe", "dsquery",
+        }
+        credential_procs = {
+            "mimikatz.exe", "mimikatz", "procdump.exe", "procdump",
+        }
+        privesc_procs = {"sudo", "pkexec", "su"}
+        lateral_procs = {
+            "psexec.exe", "psexec", "psexec64.exe", "wmic.exe", "wmic"
+        }
+        persistence_procs = {"schtasks.exe", "schtasks", "reg.exe", "reg"}
+
+        if proc in defense_evasion_procs:
+            return "TA0005"
+        if proc in discovery_procs:
+            return "TA0007"
+        if proc in credential_procs:
+            return "TA0006"
+        if proc in privesc_procs:
+            return "TA0004"
+        if proc in lateral_procs:
+            return "TA0008"
+        if proc in persistence_procs:
+            return "TA0003"
+
+        if "family=network" in description_lower:
+            if has_high_risk_port:
+                return "TA0011"
+            return "TA0011"
+
+        if "family=file" in description_lower:
+            return "TA0001"
+
+        return "TA0002"
+
+    def _extract_mitre_tactic(self, description):
 
         import re
 
@@ -1195,6 +1272,9 @@ class ThreatClassificationAgent:
 
         # If no explicit tactic, map based on vulnerability keywords
         description_lower = description.lower()
+
+        if "source=edr_telemetry" in description_lower:
+            return self._map_edr_mitre_tactic(description_lower)
 
         # Mapping vulnerabilities to MITRE tactics based on description content
         if any(
@@ -1727,14 +1807,99 @@ class ThreatClassificationAgent:
         session.close()
         return training_texts, training_labels
 
-    # TODO: Add NVD API integration in future
+    def _classify_edr_by_hints(self, description_lower: str) -> str:
+        has_rwx_sections = "hint:memory_rwx_anomaly" in description_lower
+        has_reverse_shell = "hint:reverse_shell_pattern" in description_lower
+        has_download = "hint:download_exec_chain" in description_lower
+        has_nc = "hint:nc_usage" in description_lower
+        has_high_risk_port = "hint:high_risk_port" in description_lower
+        has_ephemeral = "hint:ephemeral_exec_path" in description_lower
+        has_file_in_temp = "hint:file_in_temp_dir" in description_lower
+        has_high_entropy = "hint:high_entropy_binary" in description_lower
+        has_wx_sections = "hint:wx_sections" in description_lower
+        has_suspicious_imports = "hint:many_suspicious_imports" in description_lower
+
+        if has_rwx_sections:
+            return "Defense Evasion"
+
+        if has_reverse_shell:
+            return "Remote Code Execution"
+
+        if has_nc and has_high_risk_port:
+            return "Remote Code Execution"
+
+        if has_download and has_ephemeral:
+            return "Remote Code Execution"
+
+        if has_download:
+            return "Malware Delivery"
+
+        if has_nc:
+            return "Network Attack"
+
+        if has_high_entropy and has_wx_sections:
+            return "Malware Delivery"
+
+        if has_suspicious_imports:
+            return "Malware Delivery"
+
+        if has_file_in_temp and has_high_entropy:
+            return "Malware Delivery"
+
+        proc = ""
+        if "proc=" in description_lower:
+            proc = description_lower.split("proc=")[1].split(" ")[0]
+
+        windows_defense_evasion = {
+            "netsh.exe", "netsh", "bcdedit.exe", "bcdedit", "vssadmin.exe",
+            "vssadmin", "wevtutil.exe", "wevtutil", "schtasks.exe", "schtasks", "reg.exe",
+            "reg", "attrib.exe", "attrib", "icacls.exe", "icacls",
+        }
+        windows_discovery = {
+            "whoami.exe", "whoami", "systeminfo.exe", "systeminfo", "tasklist.exe",
+            "tasklist", "net.exe", "net", "net1.exe", "net1", "hostname.exe",
+            "hostname", "query.exe", "query", "nltest.exe", "nltest", "dsquery.exe", "dsquery"
+        }
+        windows_credential_access = {
+            "mimikatz.exe", "mimikatz", "procdump.exe", "procdump", "lsass.exe", "lsass"
+        }
+        windows_lateral = {
+            "psexec.exe", "psexec", "psexec64.exe", "wmic.exe", "wmic",
+        }
+
+        if proc in windows_defense_evasion:
+            return "Defense Evasion"
+        if proc in windows_discovery:
+            return "Discovery"
+        if proc in windows_credential_access:
+            return "Credential Access"
+        if proc in windows_lateral:
+            return "Lateral Movement"
+
+        linux_privesc = {"sudo", "pkexec", "su"}
+        linux_recon = {"nmap", "masscan", "rustscan", "nikto"}
+
+        if proc in linux_privesc:
+            return "Privilege Escalation"
+        if proc in linux_recon:
+            return "Discovery"
+
+        if "family=network" in description_lower:
+            if has_high_risk_port:
+                return "Command and Control"
+            return "Network Attack"
+
+        if "family=file" in description_lower:
+            return "Malware Delivery"
+
+        return "Needs Review"
 
     def _bootstrap_label(self, description):
 
-        # Create bootstrap label based on keywords (used for initial training only).
-        # Known limitations: May not cover all cases and vulnerabilities correctly.
-
         description_lower = description.lower() if description else ""
+
+        if "source=edr_telemetry" in description_lower:
+            return self._classify_edr_by_hints(description_lower)
 
         # Injection Attacks
         if "injection" in description_lower or "sqli" in description_lower:
@@ -1855,21 +2020,14 @@ class ThreatClassificationAgent:
         ):
             return "Deserialization Vulnerability"
 
-        # Zero-Day & Advanced
         elif "zero-day" in description_lower or "0-day" in description_lower:
             return "Zero-Day Exploit"
         elif "race condition" in description_lower or "toctou" in description_lower:
             return "Race Condition"
-
-        # Default/Fallback
         else:
             return "Vulnerability Exploitation"
 
     def incorporate_analyst_feedback(self):
-        """
-        Fetch all analyst-curated training data since last retrain.
-        Combine with original training data and retrain classifier.
-        """
 
         session = get_session()
 

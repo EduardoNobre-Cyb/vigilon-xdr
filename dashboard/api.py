@@ -1,7 +1,3 @@
-"""
-REST API endpoints for analyst dashboard
-"""
-
 from flask import Flask, jsonify, request
 from dashboard.app import app, db
 from data.models.models import Agent, TelemetryEvent, ThreatClassification, AgentAction

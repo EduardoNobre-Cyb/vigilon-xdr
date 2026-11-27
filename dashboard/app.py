@@ -2,6 +2,7 @@ from flask import Flask, render_template, jsonify, Response
 from flask_socketio import SocketIO, emit, join_room
 from flask_cors import CORS
 import os
+import secrets
 from flask import request, redirect, url_for
 from shared.communication.message_bus import message_bus
 from data.models.models import (
@@ -28,6 +29,7 @@ from agents.log_ingestor.log_ingestor_agent1 import Agent1LogIngestion
 from agents.response_coordinator.response_coordinator_agent import AnalystManager
 from agents.classification.classifier_agent import ThreatClassificationAgent
 from shared.agent_names import agent_name, agent_role
+from shared.email_service import send_email, smtp_configured
 import json
 import socket
 import redis
@@ -53,8 +55,12 @@ from pathlib import Path
 import subprocess
 import time
 import atexit
+from sqlalchemy.orm.attributes import flag_modified
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import contextmanager
+import geoip2.database
+import geoip2.errors
+import glob as _glob
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -72,7 +78,16 @@ def get_db_session():
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes and origins
 socketio = SocketIO(app, cors_allowed_origins="*")
+_geoip_reader = None
 
+
+def get_geoip_reader():
+    global _geoip_reader
+    if _geoip_reader is None:
+        db_path = os.path.join(os.path.dirname(__file__), "..", "data", "GeoLite2-City.mmdb")
+        if not os.path.exists(db_path):
+            _geoip_reader = geoip2.database.Reader(db_path)
+    return _geoip_reader
 
 def _classification_origin(classification) -> str:
     if getattr(classification, "asset_id", None) is None and getattr(
@@ -281,7 +296,6 @@ def change_password_page():
 @app.route("/api/auth/change-password", methods=["POST"])
 @login_required
 def api_change_password():
-    """Validates the current password, applies the new one, and returns a fresh token."""
     data = request.get_json()
     if not data:
         return jsonify({"error": "JSON body required"}), 400
@@ -327,6 +341,168 @@ def api_change_password():
     finally:
         session.close()
 
+@app.route("/api/auth/forgot-password", methods=["POST"])
+def api_forgot_password():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+
+    email = data.get("email", "").strip()
+    if not email:
+        return jsonify({"message": "If that email exists, a reset link has been sent."}), 200
+
+    session = get_session()
+    try: 
+        from sqlalchemy import or_
+        analyst = session.query(Analyst).filter(
+            Analyst.active == True,
+            or_(Analyst.email == email, Analyst.contact_email == email)
+        ).first()
+
+        if analyst:
+            token = secrets.token_urlsafe(32)
+            analyst.password_reset_token = generate_password_hash(token)
+            analyst.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+            session.commit()
+
+            send_to = analyst.contact_email or analyst.email
+            reset_url = f"{request.host_url}reset-password?token={token}&email={analyst.email}"
+
+            email_html = f"""
+            <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0f1a;border-radius:12px;border:1px solid rgba(124,107,240,0.2);">
+              <div style="text-align:center;margin-bottom:24px;">
+                <h2 style="color:#7c6bf0;font-size:22px;margin:0 0 4px;">Vigilon XDR</h2>
+                <p style="color:#8b8fa3;font-size:12px;text-transform:uppercase;letter-spacing:0.1em;margin:0;">Password Reset Request</p>
+              </div>
+              <p style="color:#c8cad0;font-size:14px;line-height:1.6;">
+                Someone requested a password reset for your account. Click the button below to set a new password:
+              </p>
+              <div style="text-align:center;margin:28px 0;">
+                <a href="{reset_url}" style="display:inline-block;background:#7c6bf0;color:#ffffff;text-decoration:none;padding:12px 32px;border-radius:8px;font-size:14px;font-weight:600;">
+                  Reset Password
+                </a>
+              </div>
+              <p style="color:#8b8fa3;font-size:12px;line-height:1.5;">
+                This link expires in <strong style="color:#c8cad0;">1 hour</strong>. If you did not request this, ignore this email — your password will not change.
+              </p>
+              <hr style="border:none;border-top:1px solid rgba(124,107,240,0.15);margin:24px 0 16px;">
+              <p style="color:#5a5d6e;font-size:11px;text-align:center;margin:0;">Vigilon XDR Platform</p>
+            </div>
+            """
+
+            sent = send_email(send_to, "Password Reset - Vigilon XDR", email_html)
+            if not sent:
+                print(f"\n{'='*60}")
+                print(f"PASSWORD RESET LINK (valid 1 hour):")
+                print(f"{reset_url}")
+                print(f"{'='*60}\n")
+
+        return jsonify({"message": "If that email exists, a reset link has been sent."}), 200
+    finally:
+        session.close()
+
+@app.route("/reset-password")
+def reset_password_page():
+    return render_template("reset_password.html")
+
+
+@app.route("/api/auth/reset-password", methods=["POST"])
+def api_reset_password():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+
+    email = data.get("email", "").strip()
+    token = data.get("token", "").strip()
+    new_password = data.get("new_password", "")
+
+    if not email or not token or not new_password:
+        return jsonify({"error": "Email, token, and new_password are required"}), 400
+
+    if len(new_password) < 8:
+        return jsonify({"error": "Passowrd must be at least 8 characters"}), 400
+
+    session = get_session()
+    try:
+        analyst = session.query(Analyst).filter_by(email=email, active=True).first()
+
+        if not analyst or not analyst.password_reset_token:
+            return jsonify({"error": "Invalid or expired reset link"}), 400
+
+        if analyst.password_reset_expires and analyst.password_reset_expires < datetime.now(timezone.utc):
+            analyst.password_reset_token = None
+            analyst.password_reset_expires = None
+            session.commit()
+            return jsonify({"error": "Reset link has expired. Please request a new one."}), 400
+
+        if not check_password_hash(analyst.password_reset_token, token):
+            return jsonify({"error": "Invalid or expired reset link"}), 400
+
+        analyst.password_hash = generate_password_hash(new_password)
+        analyst.password_reset_token = None
+        analyst.password_reset_expires = None
+        analyst.must_change_password = False
+        session.commit()
+
+        return jsonify({"message": "Password has been reset successfully."})
+    finally:
+        session.close()
+
+
+@app.route("/api/auth/request-invite", methods=["POST"])
+def api_request_invite():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+
+    requester_email = data.get("email", "").strip()
+    requester_name = data.get("name", "").strip()
+
+    if not requester_email:
+        return jsonify({"error": "Email is required"}), 400
+
+    if not requester_name:
+        return jsonify({"error": "Name is required"}), 400
+
+    email_html = f"""
+    <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0f1a;border-radius:12px;border:1px solid rgba(124,107,240,0.2);">
+      <div style="text-align:center;margin-bottom:24px;">
+        <h2 style="color:#7c6bf0;font-size:22px;margin:0 0 4px;">Vigilon XDR</h2>
+        <p style="color:#8b8fa3;font-size:12px;text-transform:uppercase;letter-spacing:0.1em;margin:0;">New Access Request</p>
+      </div>
+      <p style="color:#c8cad0;font-size:14px;line-height:1.6;">
+        Someone has requested access to the Vigilon XDR platform:
+      </p>
+      <table style="width:100%;margin:16px 0;border-collapse:collapse;">
+        <tr>
+          <td style="color:#8b8fa3;font-size:13px;padding:8px 0;border-bottom:1px solid rgba(124,107,240,0.1);">Name</td>
+          <td style="color:#c8cad0;font-size:13px;padding:8px 0;border-bottom:1px solid rgba(124,107,240,0.1);text-align:right;font-weight:600;">{requester_name or 'Not provided'}</td>
+        </tr>
+        <tr>
+          <td style="color:#8b8fa3;font-size:13px;padding:8px 0;">Email</td>
+          <td style="color:#c8cad0;font-size:13px;padding:8px 0;text-align:right;font-weight:600;">{requester_email}</td>
+        </tr>
+      </table>
+      <p style="color:#8b8fa3;font-size:12px;line-height:1.5;">
+        To invite this user, create an analyst account with their email in the platform.
+      </p>
+      <hr style="border:none;border-top:1px solid rgba(124,107,240,0.15);margin:24px 0 16px;">
+      <p style="color:#5a5d6e;font-size:11px;text-align:center;margin:0;">Vigilon XDR Platform</p>
+    </div>
+    """
+
+    admin_email = os.environ.get("SMTP_USERNAME", "vigilon.team@gmail.com")
+    sent = send_email(admin_email, f"Access Request - {requester_name or requester_email}", email_html)
+
+    if sent:
+        return jsonify({"message": "Your request has been sent to us. We'll be in touch"})
+    else:
+        print(f"\n{'='*60}")
+        print(f"ACCESS REQUEST from {requester_name} ({requester_email})")
+        print(f"{'='*60}\n")
+        return jsonify({"message": "Your request has been sent to us. We'll be in touch"})
+
+
 
 @app.route("/api/server-info")
 def server_info():
@@ -346,6 +522,61 @@ def server_info():
     except Exception as e:
         return jsonify({"error": str(e), "status": "offline"}), 500
 
+@app.route("/api/threat-origins")
+@login_required
+def threat_origins():
+    reader = get_geoip_reader()
+    if not reader:
+        return jsonify({"origins": [], "error": "GeoIP datbaase not found"}), 200
+
+    session = get_session()
+    try:
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
+
+        events = (
+            session.query(TelemetryEvent)
+            .filter(
+                TelemetryEvent.event_type == "network",
+                TelemetryEvent.timestamp >= since,
+                TelemetryEvent.network_risk_score >= 0.5,
+            )
+            .order_by(TelemetryEvent.timestamp.desc())
+            .limit(200)
+            .all()
+        )
+
+        origins = []
+        seen_ips = set()
+
+        for event in events:
+            data = event.event_data or {}
+            inner = data.get("data", data)
+            ip = inner.get("dest_ip") or inner.get("source_ip")
+            if not ip or ip in seen_ips:
+                continue
+            seen_ips.add(ip)
+
+            try:
+                geo = reader.city(ip)
+                if geo.location.latitude and geo.location.longitude:
+                    origins.append({
+                        "ip": ip,
+                        "lat": geo.location.latitude,
+                        "lng": geo.location.longitude,
+                        "country": geo.country.name,
+                        "city": geo.city.name,
+                        "risk_score": event.network_risk_Score,
+                        "timestamp": event.timestamp.isoformat(),
+                    })
+            except (geoip2.errors.AddressNotFoundError, ValueError):
+                continue
+
+        return jsonify({"origins": origins})
+
+    except Exception as e:
+        return jsonify({"origins": [], "error": str(e)}), 200
+    finally:
+        session.close()
 
 @app.route("/api/agents/status")
 @login_required
@@ -1353,8 +1584,14 @@ def recent_threats():
         # Calculate database offset
         offset = (page - 1) * page_size
 
+        timeframe = request.args.get("timeframe", "24h")
+
         # Get total threat count BEFORE applying limits
-        total_count = session.query(ThreatClassification).count()
+        count_query = session.query(ThreatClassification)
+        if timeframe != "all":
+            since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+            count_query = count_query.filter(ThreatClassification.timestamp >= since_24h)
+        total_count = count_query.count()
 
         # Main query with OFFSET and LIMIT instead of just LIMIT
         threats = (
@@ -1373,7 +1610,11 @@ def recent_threats():
             .outerjoin(
                 Analyst, ThreatClassification.reviewed_by_id == Analyst.id
             )  # Left join so non-reviewed show null
-            .order_by(ThreatClassification.id.desc())
+        )
+        if timeframe != "all":
+            threats = threats.filter(ThreatClassification.timestamp >= since_24h)
+        threats = (
+            threats.order_by(ThreatClassification.id.desc())
             .offset(offset)
             .limit(page_size)
             .all()
@@ -2149,8 +2390,10 @@ def get_reviewer_analytics():
 def get_logs():
     try:
         with get_db_session() as session:
+            since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
             logs = (
                 session.query(LogEvent)
+                .filter(LogEvent.timestamp >= since_24h)
                 .order_by(LogEvent.timestamp.desc())
                 .limit(200)
                 .all()
@@ -2303,6 +2546,101 @@ def get_response_actions():
     finally:
         session.close()
 
+@app.route("/api/quarantine", methods=["GET"])
+@login_required
+def list_quarantined_files():
+    session = get_session()
+    events = (
+        session.query(TelemetryEvent, Agent)
+        .join(Agent, TelemetryEvent.agent_id == Agent.id)
+        .filter(
+            TelemetryEvent.event_type == "file",
+            TelemetryEvent.event_data.op("->>")("auto_response_action") == "quarantine_file",
+            TelemetryEvent.event_data.op("->>")("auto_response_mode") == "enforce",
+        )
+        .order_by(TelemetryEvent.timestamp.desc())
+        .limit(200)
+        .all()
+    )
+    files = []
+    for event, agent in events:
+        data = event.event_data or {}
+        if data.get("quarantine_resolved"):
+            continue
+        files.append({
+            "id": str(event.id),
+            "original_name": data.get("file_name", "unknown"),
+            "path": data.get("auto_response_file_path", ""),
+            "sensor": "Spectra",
+            "score": event.malware_confidence,
+            "quarantined_at": event.timestamp.isoformat() if event.timestamp else "",
+            "file_size": data.get("file_size", 0),
+            "hostname": agent.hostname,
+            "os_type": agent.os_type,
+            "file_hash": data.get("file_hash", ""),
+            "agent_id": agent.agent_id,
+        })
+    return jsonify(files)
+
+
+@app.route("/api/quarantine/restore", methods=["POST"])
+@login_required
+def restore_quarantined_file():
+    data = request.get_json()
+    event_id = data.get("id", "")
+    if not event_id:
+        return jsonify({"error": "Missing event id"}), 400
+
+    session = get_session()
+    event = session.query(TelemetryEvent).filter_by(id=event_id).first()
+    if not event:
+        return jsonify({"error": "Quarantine event not found"}), 404
+
+    event_data = dict(event.event_data or {})
+    original_path = event_data.get("auto_response_file_path", "")
+    file_name = event_data.get("file_name", "unknown")
+
+    agent = session.query(Agent).filter_by(id=event.agent_id).first()
+    if agent:
+        dispatch_action_to_agent(agent.agent_id, "restore_quarantine", {
+            "file_name": file_name,
+            "original_path": original_path,
+        })
+
+    event_data["quarantine_resolved"] = True
+    event.event_data = event_data
+    flag_modified(event, "event_data")
+    session.commit()
+    return jsonify({"status": "restored", "restored_to": "dispatched to agent"})
+
+
+@app.route("/api/quarantine/delete", methods=["POST"])
+@login_required
+def delete_quarantined_file():
+    data = request.get_json()
+    event_id = data.get("id", "")
+    if not event_id:
+        return jsonify({"error": "Quarantine event not found"}), 404
+
+    session = get_session()
+    event = session.query(TelemetryEvent).filter_by(id=event_id).first()
+    if not event:
+        return jsonify({"error": "Quarantine event not found"}), 404
+
+    event_data = dict(event.event_data or {})
+    file_name = event_data.get("file_name", "unknown")
+
+    agent = session.query(Agent).filter_by(id=event.agent_id).first()
+    if agent:
+        dispatch_action_to_agent(agent.agent_id, "delete_quarantine", {
+            "file_name": file_name,
+        })
+
+    event_data["quarantine_resolved"] = "deleted"
+    event.event_data = event_data
+    flag_modified(event, "event_data")
+    session.commit()
+    return jsonify({"status": "deleted", "deleted_from": "dispatched to agent"})
 
 @app.route("/api/email-notifications")
 @login_required

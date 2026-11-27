@@ -1,6 +1,3 @@
-// Moved out of templates/dashboard.html (was an inline <script>). Loaded as a classic
-// script so its functions stay global for the onclick="..." handlers.
-// Fetch import/log statistics for dashboard
 function loadDashboardStats() {
   authFetch("/api/logs")
     .then((r) => r.json())
@@ -8,9 +5,10 @@ function loadDashboardStats() {
       document.getElementById("total-logs").textContent = data.logs.length;
       if (data.logs.length > 0) {
         const lastLog = data.logs[0];
-        document.getElementById("last-import").textContent = 
-          new Date(lastLog.timestamp).toLocaleString();
+        document.getElementById("last-import").textContent = new Date(lastLog.timestamp).toLocaleString();
       }
+      const el = document.getElementById("stat-events-24h");
+      if (el) el.textContent = data.logs.length.toLocaleString();
     })
     .catch(() => {
       document.getElementById("total-logs").textContent = "0";
@@ -21,19 +19,56 @@ function loadDashboardStats() {
     .then((r) => r.json())
     .then((data) => {
       document.getElementById("assets-count").textContent = data.assets.length;
+      const el = document.getElementById("stat-assets");
+      if (el) el.textContent = data.assets.length;
     })
     .catch(() => {
       document.getElementById("assets-count").textContent = "0";
-    });
+    })
 
   authFetch("/api/vulnerabilities")
     .then((r) => r.json())
     .then((data) => {
       document.getElementById("vulns-count").textContent = data.vulnerabilities.length;
+      const el = document.getElementById("stat-vulns");
+      if (el) el.textContent = data.vulnerabilities.length;
     })
     .catch(() => {
       document.getElementById("vulns-count").textContent = "0";
     });
+
+  authFetch("/api/edr-agents")
+    .then((r) => r.json())
+    .then((data) => {
+      const agents = [...(data.windows || []), ...(data.linux || [])];
+      const online = agents.filter(a => a.status === "online").length;
+      const total = agents.length;
+      const elTotal = document.getElementById("stat-total-sensors");
+      const elOnline = document.getElementById("stat-sensors-online");
+      if (elTotal) elTotal.textContent = total;
+      if (elOnline) {
+        elOnline.textContent = online + " online";
+        elOnline.style.color = online > 0 ? "var(--green)" : "var(--red)";
+      }
+    })
+    .catch(() => {});
+
+  authFetch("/api/threats/recent?page=1&page_size=1")
+    .then((r) => r.json())
+    .then((data) => {
+      const el = document.getElementById("stat-threats-24h");
+      if (el && data.pagination) el.textContent = data.pagination.total_count;
+    })
+    .catch(() => {});
+
+  authFetch("/api/reviews/pending")
+    .then((r) => r.json())
+    .then((data) => {
+      const el = document.getElementById("stat-threats-pending");
+      const count = (data.items || []).length;
+      if (el) el.textContent = count + " pending review";
+    })
+    .catch(() => {})
 }
 
 // Determine color/styling based on confidence
@@ -49,7 +84,7 @@ const pageSize = 20;
 // Fetch recent threats for main dashboard
 function loadRecentThreats(page = 1) {
   currentPage = page;
-  const url = `/api/threats/recent?page=${currentPage}&page_size=${pageSize}`;
+  const url = `/api/threats/recent?page=${currentPage}&page_size=${pageSize}&timeframe=all`;
 
   authFetch(url)
     .then((r) => r.json())
@@ -170,10 +205,14 @@ function loadAnomalies() {
         data.anomalies.forEach((anomaly) => {
           list.innerHTML += `
             <div class="anomaly-item">
-              <strong>🚨 ${anomaly.threat_type}</strong><br>
+              <strong><span data-icon="bell"></span> ${anomaly.threat_type}</strong><br>
               <small>Score: ${anomaly.anomaly_score.toFixed(2)} | ${anomaly.reasons.join(', ')}</small>
             </div>
           `;
+        });
+        list.querySelectorAll('[data-icon]').forEach(el => {
+          const svg = window.ICONS[el.dataset.icon];
+          if (svg) el.innerHTML = svg;
         });
       } else {
         list.innerHTML = '<div class="no-data">No anomalies detected</div>';
@@ -196,7 +235,7 @@ function loadPatterns() {
         data.patterns.forEach((pattern) => {
           list.innerHTML += `
             <div class="pattern-item">
-              <strong>🎯 ${pattern.pattern}</strong><br>
+              <strong>${ICONS.target} ${pattern.pattern}</strong><br>
               <small>Confidence: ${pattern.confidence.toFixed(2)} | ${pattern.description}</small>
             </div>
           `;
@@ -211,12 +250,89 @@ function loadPatterns() {
     });
 }
 
+function loadSensorHealth() {
+  const container = document.getElementById("sensor-health-dashboard");
+  if (!container) return;
+
+  authFetch("/api/edr-agents")
+    .then((r) => r.json())
+    .then((data) => {
+      const agents = [...(data.windows || []), ...(data.linux || [])];
+      if (agents.length === 0) {
+        container.innerHTML = '<div class="no-data">No sensors registered</div>';
+        return;
+      }
+
+      container.innerHTML = agents.map(agent => {
+        const isOnline = agent.status === "online";
+        const dotColor = isOnline ? "var(--green)" : "var(--red)";
+        const statusText = isOnline ? "Online" : "Offline";
+        const lastSeen = agent.last_heartbeat ? new Date(agent.last_heartbeat).toLocaleTimeString() : "N/A";
+        const osIcon = '<span style="display:inline-flex;vertical-align:middle;width:20px;height:20px;">' + ((agent.os_type || "").toLowerCase().includes("windows") ? ICONS.windows : ICONS.linux) + '</span>';
+
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center;
+                      padding:8px 10px; border-left:3px solid ${dotColor};
+                      background:var(--bg); border-radius:0 6px 6px 0; margin-bottom:6px;">
+            <div>
+              <div style="font-weight:500; font-size:13px;">${osIcon} ${agent.hostname || agent.agent_id}</div>
+              <div style="font-size:10px; color:var(--fg-dim);">${agent.agent_id.substring(0, 8)}</div>
+            </div>
+            <div style="font-size:11px; font-weight:600; display:flex; align-items:center; gap:5px;">
+              <span style="width:7px; height:7px; border-radius:50%; background:${dotColor}; display:inline-block;"></span>
+              <span style="color:${dotColor};">${statusText} · ${lastSeen}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    })
+    .catch(() => {
+      container.innerHTML = '<div class="no-data">Unable to load sensor health</div>';
+    });
+}
+
 // Load all dashboard data
 function loadDashboard() {
   loadDashboardStats();
   loadRecentThreats();
   loadAnomalies();
   loadPatterns();
+  loadSensorHealth();
+
+  const roleTag = document.getElementById("user-role-tag");
+  if (roleTag) {
+    const role = localStorage.getItem("user_role") || "admin";
+    roleTag.textContent = role;
+  }
+}
+
+function loadLatestThreatsCompact() {
+  const container = document.getElementById("latest-threats-compact");
+  if (!container) return;
+
+  authFetch("/api/threats/recent?page=1&page_size=5")
+    .then(r => r.json())
+    .then(data => {
+      const threats = data.threats || [];
+      if (threats.length === 0) {
+        container.innerHTML = '<p class="no-data">No recent threats</p>';
+        return;
+      }
+
+      container.innerHTML = threats.map(t => `
+        <div class="threat-compact-item">
+          <div>
+            <strong>${t.threat_type}</strong>
+            <span class="severity-${(t.severity || 'low').toLowerCase()}">${t.severity}</span>
+            <span style="color:var(--fg-dim); font-size:12px; margin-left:8px;">${t.confidence ? Math.round(t.confidence * 100) + '%' : ''}</span>
+          </div>
+          <div style="font-size:12px; color:var(--fg-dim);">${t.asset_name || ''} ${t.source || ''}</div>
+        </div>
+      `).join('');
+    })
+    .catch(() => {
+      container.innerHTML = '<p class="no-data">Could not load threats</p>';
+    });
 }
 
 // Initialize dashboard
@@ -283,26 +399,25 @@ authFetch("/api/asset-vulnerabilities")
   });
 
 // Hamburger menu toggle
-function toggleMenu() {
-  const menu = document.getElementById('dropdownMenu');
-  menu.classList.toggle('show');
-}
+function toggleMenu() {}
 
 // Show specific page/section
-function showPage(pageId) {
-  // Hide all pages
-  document.querySelectorAll('.page-section').forEach(page => {
-    page.classList.remove('active');
-  });
+function showPage(pageId, navEl) {
+  document.querySelectorAll('.page-section').forEach(s => s.classList.remove('active'));
+  document.getElementById(pageId).classList.add('active');
 
-  // Show selected page
-  const selectedPage = document.getElementById(pageId);
-  if (selectedPage) {
-    selectedPage.classList.add('active');
+  if (pageId === 'logs-section') {
+    loadSensorList();
   }
 
-  // Close dropdown
-  document.getElementById('dropdownMenu').classList.remove('show');
+  if (pageId === 'threat-intel') {
+    initThreatGlobe();
+  }
+
+  if (navEl) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    navEl.classList.add('active');
+  }
 }
 
 // Close dropdown when clicking outside

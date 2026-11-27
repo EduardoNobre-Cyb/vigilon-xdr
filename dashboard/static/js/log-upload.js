@@ -9,8 +9,8 @@ async function handleLogUpload(input) {
   // Show uploading state
   statusDiv.style.display = "block";
   statusDiv.style.background = "#1a1f3a";
-  statusDiv.style.border = "1px solid #00ff00";
-  statusDiv.style.color = "#00ff00";
+  statusDiv.style.border = "1px solid #2ecc71";
+  statusDiv.style.color = "#2ecc71";
   statusDiv.textContent = `Uploading ${file.name}...`;
 
   // Build FormData (this is how you send files via fetch)
@@ -31,8 +31,8 @@ async function handleLogUpload(input) {
     const data = await response.json();
 
     if (response.ok) {
-      statusDiv.style.borderColor = "#00ff00";
-      statusDiv.style.color = "#00ff00";
+      statusDiv.style.borderColor = "#2ecc71";
+      statusDiv.style.color = "#2ecc71";
       statusDiv.textContent = `✅ ${data.message}`;
       // Refresh the logs list to show the newly ingested data
       loadLogs();

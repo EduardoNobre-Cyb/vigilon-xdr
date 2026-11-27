@@ -244,6 +244,10 @@ def register_agent_handlers(socketio, get_db_session):
                                 dedup_key = event_data.get("name") or event_data.get("process_name") or ""
                             elif event_type == "network":
                                 dedup_key = str(event_data.get("dest_port") or "")
+                            elif event_type == "file":
+                                dedup_key = event_data.get("file_hash") or event_data.get("file_name") or ""
+                            elif event_type == "memory":
+                                dedup_key = f"{event_data.get('pid', '')}:{event_data.get('region_base', '')}"
                             else:
                                 dedup_key = ""
 
@@ -264,6 +268,10 @@ def register_agent_handlers(socketio, get_db_session):
                                         existing_key = existing_data.get("name") or existing_data.get("process_name") or ""
                                     elif event_type == "network":
                                         existing_key = str(existing_data.get("dest_port") or "")
+                                    elif event_type == "file":
+                                        existing_key = existing_data.get("file_hash") or existing_data.get("file_name") or ""
+                                    elif event_type == "memory":
+                                        existing_key = f"{existing_data.get('pid', '')}:{existing_data.get('region_base', '')}"
                                     else:
                                         existing_key = ""
                                     if existing_key == dedup_key:
@@ -650,6 +658,28 @@ def _build_threat_description(event: Dict, hostname: str, confidence: float) -> 
             f"ML Model Confidence: {confidence_value:.2%}"
         )
 
+    elif event.get("event_type") == "file":
+        description = (
+            f"High-confidence file detection ({confidence_value:.2%}) on {hostname}: "
+            f"File '{event_data.get('file_name')}' written to {event_data.get('file_path')}. "
+            f"Size: {event_data.get('file_size', 0)} bytes. "
+            f"Entropy: {event_data.get('entropy', 0):.2f}. "
+            f"Sections: {event_data.get('num_sections', 0)}. "
+            f"Suspicious imports: {event_data.get('suspicious_imports', 0)}. "
+            f"Signed: {event_data.get('has_signature', False)}. "
+            f"Hash: {event_data.get('file_hash', 'unknown')}. "
+            f"ML Model Confidence: {confidence_value:.2%}"
+        )
+
+    elif event.get("event_type") == "memory":
+        description = (
+            f"Memory anomaly alert ({confidence_value:.2%}) on {hostname}: "
+            f"Process '{event_data.get('process_name')}' (PID {event_data.get('pid')}) "
+            f"has an RWX region at {event_data.get('region_base')} "
+            f"({event_data.get('region_size', 0)} bytes). "
+            f"Backing: {event_data.get('backing_file', 'private')}"
+        )
+
     else:
         description = f"Suspicious event on {hostname}: {event.get('event_subtype')}"
 
@@ -681,6 +711,18 @@ def _build_classification_input(event: Dict, hostname: str, confidence: float) -
     if path.startswith("/tmp/") or path.startswith("/dev/shm/"):
         hints.append("hint:ephemeral_exec_path")
 
+    file_path_field = str(event_data.get("file_path") or "")
+    if file_path_field:
+        fp_lower = file_path_field.lower()
+        if "/tmp/" in fp_lower or "/dev/shm/" in fp_lower or "\\temp\\" in fp_lower:
+            hints.append("hint:file_in_temp_dir")
+        if event_data.get("entropy", 0) > 7.2:
+            hints.append("hint:high_entropy_binary")
+        if event_data.get("writable_executable_sections", 0) > 0:
+            hints.append("hint:wx_sections")
+        if event_data.get("suspicious_imports", 0) >= 5:
+            hints.append("hint:many_suspicious_imports") 
+
     hint_blob = " ".join(hints) if hints else "hint:none"
 
     if event.get("event_type") == "process":
@@ -698,6 +740,26 @@ def _build_classification_input(event: Dict, hostname: str, confidence: float) -
             f"src={event_data.get('source_ip')}:{event_data.get('source_port')} "
             f"dst={event_data.get('dest_ip')}:{event_data.get('dest_port')} "
             f"proto={event_data.get('protocol')} ml_conf={confidence_value:.4f} {hint_blob}"
+        )
+
+    if event.get("event_type") == "file":
+        file_name = str(event_data.get("file_name") or "")
+        return (
+            f"source=edr_telemetry family=file host={hostname} "
+            f"file={file_name} path={event_data.get('file_path')} "
+            f"hash={event_data.get('file_hash')} size={event_data.get('file_size')} "
+            f"entropy={event_data.get('entropy')} sections={event_data.get('num_sections')} "
+            f"suspicious_imports={event_data.get('suspicious_imports')} "
+            f"signed={event_data.get('has_signature')} "
+            f"ml_conf={confidence_value:.4f} {hint_blob}"
+        )
+
+    if event.get("event_type") == "memory":
+        return (
+            f"source=edr_telemetry family=memory host={hostname} "
+            f"proc={event_data.get('process_name')} pid={event_data.get('pid')} "
+            f"finding={event_data.get('finding_type')} region={event_data.get('region_base')} "
+            f"ml_conf={confidence_value:.4f} hint:memory_rwx_anomaly"
         )
 
     return (

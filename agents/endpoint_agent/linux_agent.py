@@ -1,5 +1,3 @@
-"""Vigilon Sensor - Linux Endpoint Collector"""
-
 import os
 import sys
 import uuid
@@ -11,6 +9,7 @@ import platform
 import ipaddress
 import logging
 import threading
+import glob
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -25,7 +24,17 @@ from agents.feature_extractor import (
     ProcessFeatureExtractor,
     NetworkFeatureExtractor,
 )
+from agents.static_feature_extractor import (
+    StaticBinaryFeatureExtractor, get_feature_names,
+    DocumentFeatureExtractor, get_doc_feature_names,
+)
 from agents.endpoint_agent.linux_event_collector import AuditdProcessCollector
+
+try:
+    from inotify_simple import INotify, flags as inotify_flags
+    HAS_INOTIFY = True
+except ImportError:
+    HAS_INOTIFY = False
 
 # Configuration
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
@@ -37,6 +46,10 @@ PROCESS_EVENT_DEDUP_WINDOW_SEC = int(os.getenv("PROCESS_EVENT_DEDUP_WINDOW_SEC",
 ML_FIRST_MODE = os.getenv("ML_FIRST_MODE", "true").lower() == "true"
 ML_EVENT_MIN_SCORE = float(os.getenv("ML_EVENT_MIN_SCORE", "0.70"))
 TELEMETRY_POLL_INTERVAL = float(os.getenv("TELEMETRY_POLL_INTERVAL", "0.25"))
+AUTO_RESPONSE_MODE = os.getenv("AUTO_RESPONSE_MODE", "dry_run").lower()
+AUTO_RESPONSE_KILL_THRESHOLD = 0.95
+AUTO_RESPONSE_QUARANTINE_THRESHOLD = 0.75
+QUARANTINE_DIR_LINUX = "/var/vigilon-edr/quarantine"
 HEARTBEAT_INTERVAL = 30
 PROCESS_COLLECTOR = os.getenv("PROCESS_COLLECTOR", "polling").lower()
 EDR_API_KEY = os.getenv("EDR_API_KEY", "").strip()
@@ -59,6 +72,35 @@ class EndpointMLModelManager:
 
         self.process_extractor = ProcessFeatureExtractor()
         self.network_extractor = NetworkFeatureExtractor()
+        self.static_extractor = StaticBinaryFeatureExtractor()
+
+        file_model_path = os.path.join(self.model_dir, "file_model.pkl")
+        file_scaler_path = os.path.join(self.model_dir, "file_scaler.pkl")
+        if os.path.exists(file_model_path):
+            self.file_model = joblib.load(file_model_path)
+            self.file_scaler = joblib.load(file_scaler_path)
+            self.file_feature_names = get_feature_names()
+            logger.info("Loaded file_model.pkl (static binary analysis)")
+        else:
+            self.file_model = None
+            self.file_scaler = None
+            self.file_feature_names = None
+            logger.warning("file_model.pkl not found — static file scoring disabled")
+
+        doc_model_path = os.path.join(self.model_dir, "doc_model.pkl")
+        doc_scaler_path = os.path.join(self.model_dir, "doc_scaler.pkl")
+        if os.path.exists(doc_model_path):
+            self.doc_model = joblib.load(doc_model_path)
+            self.doc_scaler = joblib.load(doc_scaler_path)
+            self.doc_extractor = DocumentFeatureExtractor()
+            self.doc_feature_names = get_doc_feature_names()
+            logger.info("Loaded doc_model.pkl (document malware analysis)")
+        else:
+            self.doc_model = None
+            self.doc_scaler = None
+            self.doc_extractor = None
+            self.doc_feature_names = None
+            logger.info("doc_model.pkl not found — document scoring disabled")
 
         logger.info("Loaded endpoint behavioral models from %s", self.model_dir)
 
@@ -78,13 +120,39 @@ class EndpointMLModelManager:
         return self._positive_probability(self.process_model, probabilities)
 
     def score_network(self, event_data):
-        """Score a network event using the ML Models."""
         features = self.network_extractor.extract_features(event_data)
         values = np.array([list(features.values())])
         scaled = self.network_scaler.transform(values)
         probabilities = self.network_model.predict_proba(scaled)[0]
         return self._positive_probability(self.network_model, probabilities)
 
+    def score_file(self, file_path: str):
+        if self.file_model is None:
+            return None, None
+
+        features = self.static_extractor.extract_features(file_path)
+        if features is None:
+            return None, None
+
+        values = np.array([[features.get(name, 0.0) for name in self.file_feature_names]])
+        scaled = self.file_scaler.transform(values)
+        probabilities = self.file_model.predict_proba(scaled)[0]
+        score = self._positive_probability(self.file_model, probabilities)
+        return score, features
+
+    def score_document(self, file_path: str):
+        if self.doc_model is None:
+            return None, None
+
+        features = self.doc_extractor.extract_features(file_path)
+        if features is None:
+            return None, None
+
+        values = np.array([[features.get(name, 0.0) for name in self.doc_feature_names]])
+        scaled = self.doc_scaler.transform(values)
+        probabilities = self.doc_model.predict_proba(scaled)[0]
+        score = self._positive_probability(self.doc_model, probabilities)
+        return score, features
 
 class ProcessMonitor:
     """Monitor process creation on Linux."""
@@ -263,8 +331,6 @@ class ProcessMonitor:
 
 
 class NetworkMonitor:
-    """Monitor network connections on Linux."""
-
     def __init__(self, ml_manager):
         self.previous_conns = set()
         self.ml_manager = ml_manager
@@ -415,9 +481,213 @@ class NetworkMonitor:
         return events
 
 
-class LinuxEndpointAgent:
-    """Main Linux endpoint agent orchestration."""
+def _build_watched_dirs_linux() -> list:
+    dirs = [
+        "/tmp",
+        "/var/tmp",
+        "/dev/shm",
+        "/run/user",
+        "/opt",
+    ]
+    per_user_subdirs = ["Downloads", "Documents", "Desktop", "Pictures", "Videos", "Music"]
+    for home in glob.glob("/home/*"):
+        if not os.path.isdir(home):
+            continue
+        dirs.append(home)
+        for sub in per_user_subdirs:
+            candidate = os.path.join(home, sub)
+            if os.path.isdir(candidate):
+                dirs.append(candidate)
+    root_home = "/root"
+    if os.path.isdir(root_home):
+        dirs.append(root_home)
+        for sub in per_user_subdirs:
+            candidate = os.path.join(root_home, sub)
+            if os.path.isdir(candidate):
+                dirs.append(candidate)
+    return dirs
 
+WATCHED_DIRS_LINUX = _build_watched_dirs_linux()
+
+FILE_SCAN_MIN_SIZE = 1024
+FILE_SCAN_MAX_SIZE = 100_000_000
+FILE_SCAN_MIN_SCORE = 0.0
+
+FILE_SKIP_EXTENSIONS = {
+    ".crdownload", ".part", ".partial", ".downloading"
+}
+
+FILE_SKIP_PATH_FRAGMENTS = {
+    "/.cache/google-chrome/Default/Cache/",
+    "/.cache/mozilla/firefox/",
+    "/.cache/chromium/Default/Cache/",
+}
+
+class FileMonitor:
+    def __init__(self, ml_manager):
+        self.ml_manager = ml_manager
+        self.scanned_paths = set()
+        self.inotify = None
+        self.watch_descriptors = {}
+
+        if not HAS_INOTIFY:
+            logger.warning("inotify_simple not installed — FileMonitor disabled")
+            return
+        if ml_manager.file_model is None:
+            logger.info("No file model loaded — FileMonitor will not score files")
+
+        self.inotify = INotify()
+        watch_flags = inotify_flags.CREATE | inotify_flags.MOVED_TO | inotify_flags.CLOSE_WRITE
+
+        for dir_path in WATCHED_DIRS_LINUX:
+            expanded = os.path.expanduser(dir_path)
+            if os.path.isdir(expanded):
+                try:
+                    wd = self.inotify.add_watch(expanded, watch_flags)
+                    self.watch_descriptors[wd] = expanded
+                    logger.info("FileMonitor watching: %s", expanded)
+                except OSError as e:
+                    logger.warning("FileMonitor: cannot watch %s: %s", expanded, e)
+
+
+    def poll(self) -> list:
+        if self.inotify is None:
+            return []
+
+        events = []
+        for event in self.inotify.read(timeout=0):
+            if event.name == "" or event.mask & inotify_flags.ISDIR:
+                continue
+
+            dir_path = self.watch_descriptors.get(event.wd)
+            if dir_path is None:
+                continue
+
+            file_path= os.path.join(dir_path, event.name)
+
+            if file_path in self.scanned_paths:
+                continue
+            self.scanned_paths.add(file_path)
+
+            if not os.path.isfile(file_path):
+                continue
+
+            ext = os.path.splittext(file_path)[1].lower()
+            if ext in FILE_SKIP_EXTENSIONS:
+                continue
+
+            if any(frag in file_path for frag in FILE_SKIP_PATH_FRAGMENTS):
+                continue
+
+            try:
+                file_size = os.path.getsize(file_path)
+            except OSError:
+                continue
+            if file_size < FILE_SCAN_MIN_SIZE or file_size > FILE_SCAN_MAX_SIZE:
+                continue
+
+            score, features = self.ml_manager.score_file(file_path)
+            is_document = False
+            if score is None:
+                score, features = self.ml_manager.score_document(file_path)
+                is_document = True
+            if score is None:
+                continue
+
+            logger.info(
+                "File ML score: path=%s size=%d entropy=%.2f score=%.4f",
+                file_path, file_size,
+                features.get("whole_file_entropy", 0),
+                score,
+            )
+
+            try:
+                file_hash = hashlib.sha256(open(file_path, "rb").read()).hexdigest()
+            except (OSError, PermissionError):
+                file_hash = ""
+
+            event_data = {
+                "file_path": file_path,
+                "file_name": os.path.basename(file_path),
+                "file_size": file_size,
+                "file_hash": f"sha256:{file_hash}",
+                "entropy": round(features.get("whole_file_entropy", 0), 4),
+                "num_sections": int(features.get("num_sections", 0)),
+                "suspicious_imports": int(features.get("has_signature", 0)),
+                "is_pe": not is_document and bool(features.get("is_exe", 0) or features.get("is_dll", 0)),
+                "is_document": is_document,
+                "writable_executable_sections": int(features.get("writable_executable_sections", 0)),
+                "ml_score": score,
+            }
+
+            severity = "info"
+            if score >= 0.95:
+                severity = "critical"
+            elif score >= 0.70:
+                severity = "warning"
+
+            response_action = None
+            if AUTO_RESPONSE_MODE in {"dry_run", "enforce"}:
+                if score >= AUTO_RESPONSE_KILL_THRESHOLD:
+                    response_action = "delete_and_kill"
+                elif score >= AUTO_RESPONSE_QUARANTINE_THRESHOLD:
+                    response_action = "quarantine_file"
+
+            if response_action and AUTO_RESPONSE_MODE == "enforce":
+                try:
+                    if response_action == "delete_and_kill":
+                        os.remove(file_path)
+                        logger.warning(
+                            "AUTO-RESPONSE: deleted %s (score=%.2f)",
+                            file_path, score,
+                        )
+                    elif response_action == "quarantine_file":
+                        os.makedirs(QUARANTINE_DIR_LINUX, exist_ok=True)
+                        quarantine_dest = os.path.join(
+                            QUARANTINE_DIR_LINUX,
+                            f"{int(time.time())}_{os.path.basename(file_path)}",
+                        )
+                        os.rename(file_path, quarantine_dest)
+                        logger.warning(
+                            "AUTO-RESPONSE: quarantined %s → %s (score=%.2f)",
+                            file_path, quarantine_dest, score,
+                        )
+                except OSError as e:
+                    logger.error("AUTO-RESPONSE failed for %s: %s", file_path, e)
+            elif response_action and AUTO_RESPONSE_MODE == "dry_run":
+                logger.info(
+                    "AUTO-RESPONSE (dry_run): would %s %s (score=%.2f)",
+                    response_action, file_path, score,
+                )
+
+            telemetry_event = {
+                "event_type": "file",
+                "event_subtype": "file_write",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "severity": severity,
+                "malware_confidence": score,
+                "data": {
+                    **event_data,
+                    "auto_response_action": response_action,
+                    "auto_response_mode": AUTO_RESPONSE_MODE,
+                    "auto_response_file_path": file_path,
+                },
+            }
+            events.append(telemetry_event)
+
+            if score >= 0.70:
+                logger.warning(
+                    "FILE ALERT: %s score=%.2f entropy=%.2f",
+                    file_path, score, features.get("whole_file_entropy", 0),
+                )
+
+        if len(self.scanned_paths) > 10000:
+            self.scanned_paths.clear()
+
+        return events
+
+
+class LinuxEndpointAgent:
     def __init__(self):
         self.agent_id = self._get_or_create_agent_id()
         self.sio = socketio.Client()
@@ -428,6 +698,7 @@ class LinuxEndpointAgent:
         self.ml_manager = EndpointMLModelManager()
         self.process_monitor = ProcessMonitor(self.ml_manager)
         self.network_monitor = NetworkMonitor(self.ml_manager)
+        self.file_monitor = FileMonitor(self.ml_manager)
         self.auditd_collector = AuditdProcessCollector() if PROCESS_COLLECTOR == "auditd" else None
         if self.auditd_collector is not None:
             self.auditd_collector.start()
@@ -491,11 +762,41 @@ class LinuxEndpointAgent:
 
             elif action_type == "quarantine_file":
                 file_path = action_params.get("file_path")
-                quarantine_dir = "/var/threat-defense/quarantine"
+                quarantine_dir = os.path.join(QUARANTINE_DIR_LINUX, f"{int(time.time())}_{os.path.basename(file_path)}")
                 os.makedirs(quarantine_dir, exist_ok=True)
                 quarantine_path = os.path.join(quarantine_dir, os.path.basename(file_path))
                 os.rename(file_path, quarantine_path)
                 result_message = f"File moved to quarantine: {quarantine_path}"
+
+            elif action_type == "restore_quarantine":
+                file_name = action_params.get("file_name", "")
+                original_path = action_params.get("original_path", "")
+                quarantine_match = None
+                if os.path.isdir(QUARANTINE_DIR_LINUX):
+                    for entry in os.listdir(QUARANTINE_DIR_LINUX):
+                        if entry.endswith("_" + file_name) or entry == file_name:
+                            quarantine_match = os.path.join(QUARANTINE_DIR_LINUX, entry)
+                            break
+                if not quarantine_match:
+                    result_message = f"File not found in quanratine: {file_name}"
+                elif not original_path:
+                    restore_to = os.path.join("/tmp", file_name)
+                    os.rename(quarantine_match, restore_to)
+                    result_messsage = f"Restored to {restore_to}"
+                else:
+                    os.rename(quarantine_match, original_path)
+                    result_message = f"File restored to {original_path}"
+
+            elif action_type == "delete_quarantine":
+                file_name = action_params.get("file_name", "")
+                deleted = False
+                if os.path.isdir(QUARANTINE_DIR_LINUX):
+                    for entry in os.listdir(QUARANTINE_DIR_LINUX):
+                        if entry.endswith("_" + file_name) or entry == file_name:
+                            os.remove(os.path.join(QUARANTINE_DIR_LINUX, entry))
+                            deleted = True
+                            break
+                result_message = f"Deleted {file_name}" if deleted else f"File not found: {file_name}"
 
             else:
                 result_message = f"Unknown action type: {action_type}"
@@ -523,7 +824,6 @@ class LinuxEndpointAgent:
         logger.info(f"Backend acknowledged {count} telemetry events")
 
     def score_process_event(self, event_data):
-        """Build the existing telemetry event from a normalized process event."""
         process_name = event_data.get("name", "")
         command_line = event_data.get("command_line", "")
         path = event_data.get("path", "")
@@ -577,6 +877,7 @@ class LinuxEndpointAgent:
             events.extend(self.process_monitor.poll())
 
         events.extend(self.network_monitor.poll())
+        events.extend(self.file_monitor.poll())
         return events
 
     def run(self):

@@ -6,4 +6,6 @@ psutil==7.0.0
 requests==2.32.5
 python-socketio==5.16.0
 websocket-client==1.8.0 
-pywin32==305
+pywin32==312
+pefile==2024.8.26
+signify

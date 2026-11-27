@@ -39,7 +39,7 @@
           // Lock status
           let lockStatus = "";
           if (item.locked_by && item.locked_by !== currentUserId) {
-            lockStatus = `<span style="color:#ff6b6b;">🔒 Locked by ${item.locked_analyst_name}</span>`;
+            lockStatus = `<span style="color:#ff6b6b;">${ICONS.lock} Locked by ${item.locked_analyst_name}</span>`;
           }
 
           return  `
@@ -147,8 +147,8 @@ async function loadNeedsReviewModal(threatId) {
     <p><small style="color:#888;">Source: ${originLabel}</small></p>
     <p>${data.vulnerability_description || ""}</p>
 
-    <label style="color:#00ff00; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Final Classification</label>
-    <select id="review-final-type" onchange="toggleCustomThreatInput()" style="width:100%; margin-bottom:10px; background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px;">
+    <label style="color:#7c6bf0; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Final Classification</label>
+    <select id="review-final-type" onchange="toggleCustomThreatInput()" style="width:100%; margin-bottom:10px; background:#1d1a38; border:1px solid #2d2855; color:#e0ddf0; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px;">
       <option value="">-- Select Classification --</option>
       <option value="Injection Attack">Injection Attack</option>
       <option value="Privilege Escalation">Privilege Escalation</option>
@@ -161,12 +161,12 @@ async function loadNeedsReviewModal(threatId) {
     </select>
 
     <div id="custom-threat-input-container" style="display:none; margin-bottom:10px;">
-      <label style="color:#00ff00; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Custom Threat Type</label>
-      <input type="text" id="custom-threat-input" placeholder="Enter custom threat type..." style="width:100%; background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px; box-sizing:border-box;">
+      <label style="color:#7c6bf0; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Custom Threat Type</label>
+      <input type="text" id="custom-threat-input" placeholder="Enter custom threat type..." style="width:100%; background:#1d1a38; border:1px solid #2d2855; color:#e0ddf0; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px; box-sizing:border-box;">
     </div>
 
-    <label style="color:#00ff00; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Analyst Notes</label>
-    <textarea id="review-notes" rows="5" style="width:100%; background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px; box-sizing:border-box;" placeholder="Add any relevant notes or context here..."></textarea>
+    <label style="color:#7c6bf0; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Analyst Notes</label>
+    <textarea id="review-notes" rows="5" style="width:100%; background:#1d1a38; border:1px solid #2d2855; color:#e0ddf0; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px; box-sizing:border-box;" placeholder="Add any relevant notes or context here..."></textarea>
   `;
 }
 
@@ -196,8 +196,8 @@ async function loadRecentThreatReviewModal(threatId) {
     <p><small style="color:#888;">Source: ${originLabel}</small></p>
     <p>${data.vulnerability_description || ""}</p>
 
-    <label style="color:#00ff00; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Confirm or Change Classification</label>
-    <select id="review-final-type" onchange="toggleCustomThreatInput()" style="width:100%; margin-bottom:10px; background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px;">
+    <label style="color:#7c6bf0; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Confirm or Change Classification</label>
+    <select id="review-final-type" onchange="toggleCustomThreatInput()" style="width:100%; margin-bottom:10px; background:#1d1a38; border:1px solid #2d2855; color:#e0ddf0; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px;">
       <option value="${data.threat_type}" selected>✓ Keep: ${data.threat_type}</option>
       <option value="">-- Change to --</option>
       <option value="Remote Code Execution">Remote Code Execution</option>
@@ -211,12 +211,12 @@ async function loadRecentThreatReviewModal(threatId) {
     </select>
 
     <div id="custom-threat-input-container" style="display:none; margin-bottom:10px;">
-      <label style="color:#00ff00; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Custom Threat Type</label>
-      <input type="text" id="custom-threat-input" placeholder="Enter custom threat type..." style="width:100%; background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px; box-sizing:border-box;">
+      <label style="color:#7c6bf0; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Custom Threat Type</label>
+      <input type="text" id="custom-threat-input" placeholder="Enter custom threat type..." style="width:100%; background:#1d1a38; border:1px solid #2d2855; color:#e0ddf0; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px; box-sizing:border-box;">
     </div>
 
-    <label style="color:#00ff00; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Notes (Optional)</label>
-    <textarea id="review-notes" rows="3" style="width:100%; background:#0f1729; border:1px solid #00ff00; color:#00ff00; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px; box-sizing:border-box;" placeholder="Why did you change it? (if changed)"></textarea>
+    <label style="color:#7c6bf0; font-size:14px; display:block; margin-bottom:8px; margin-top:12px;">Notes (Optional)</label>
+    <textarea id="review-notes" rows="3" style="width:100%; background:#1d1a38; border:1px solid #2d2855; color:#e0ddf0; padding:8px 10px; border-radius:3px; font-family:'Share Tech Mono','Courier New',monospace; font-size:13px; box-sizing:border-box;" placeholder="Why did you change it? (if changed)"></textarea>
   `;
 }
 
@@ -354,12 +354,12 @@ async function loadAnalyticsData() {
       <tr style="border-bottom:1px solid #333;">
         <td style="padding:8px;">${a.analyst_name}</td>
         <td style="padding:8px; text-align:center;">${a.total_reviews}</td>
-        <td style="padding:8px; text-align:center; color:#00ff00;">${a.confirmed}</td>
+        <td style="padding:8px; text-align:center; color:#7c6bf0;">${a.confirmed}</td>
         <td style="padding:8px; text-align:center; color:#ffaa00;">${a.false_positives}</td>
         <td style="padding:8px; text-align:center; color:#ff6b6b;">${a.escalated}</td>
         <td style="padding:8px; text-align:center;">${a.avg_review_minutes} min</td>
         <td style="padding:8px; text-align:center; color:${a.sla_compliance_pct >= 90 ?
-        "#00ff00" : a.sla_compliance_pct >= 70 ? "#ffaa00" : "#ff6b6b"};">${a.sla_compliance_pct}%</td>
+        "#2ecc71" : a.sla_compliance_pct >= 70 ? "#ffaa00" : "#ff6b6b"};">${a.sla_compliance_pct}%</td>
       </tr>
       `,
     )
